@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <toolbox/pipe.h>
 #include <toolbox/cli/shell/cli_shell.h>
+#include <toolbox/api_lock.h>
 #include "cli_main_shell.h"
 #include "cli_main_commands.h"
 
@@ -26,6 +27,7 @@ typedef struct {
         CliVcpMessageTypeEnable,
         CliVcpMessageTypeDisable,
     } type;
+    FuriApiLock api_lock;
     union {};
 } CliVcpMessage;
 
@@ -182,6 +184,8 @@ static void cli_vcp_message_received(FuriEventLoopObject* object, void* context)
         furi_hal_usb_set_config(cli_vcp->previous_interface, NULL);
         break;
     }
+
+    api_lock_unlock(message.api_lock);
 }
 
 /**
@@ -300,16 +304,24 @@ int32_t cli_vcp_srv(void* p) {
 // Public API
 // ==========
 
+static void cli_vcp_synchronous_request(CliVcp* cli_vcp, CliVcpMessage* message) {
+    message->api_lock = api_lock_alloc_locked();
+    furi_message_queue_put(cli_vcp->message_queue, message, FuriWaitForever);
+    api_lock_wait_unlock_and_free(message->api_lock);
+}
+
 void cli_vcp_enable(CliVcp* cli_vcp) {
+    furi_check(cli_vcp);
     CliVcpMessage message = {
         .type = CliVcpMessageTypeEnable,
     };
-    furi_message_queue_put(cli_vcp->message_queue, &message, FuriWaitForever);
+    cli_vcp_synchronous_request(cli_vcp, &message);
 }
 
 void cli_vcp_disable(CliVcp* cli_vcp) {
+    furi_check(cli_vcp);
     CliVcpMessage message = {
         .type = CliVcpMessageTypeDisable,
     };
-    furi_message_queue_put(cli_vcp->message_queue, &message, FuriWaitForever);
+    cli_vcp_synchronous_request(cli_vcp, &message);
 }
