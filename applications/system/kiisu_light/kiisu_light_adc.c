@@ -29,7 +29,7 @@ typedef struct {
     DataItem* items;
 } Data;
 
-const GpioPinRecord item_light = {.name = "LGHT", .channel = FuriHalAdcChannel3};
+const GpioPinRecord item_light = {.name = "LGHT", .channel = FuriHalAdcChannel4};
 const GpioPinRecord item_vref  = {.name = "VREF", .channel = FuriHalAdcChannelVREFINT};
 const GpioPinRecord item_temp  = {.name = "TEMP", .channel = FuriHalAdcChannelTEMPSENSOR};
 const GpioPinRecord item_vbat  = {.name = "VBAT", .channel = FuriHalAdcChannelVBAT};
