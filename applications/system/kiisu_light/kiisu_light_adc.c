@@ -38,8 +38,7 @@ static void app_draw_callback(Canvas* canvas, void* ctx) {
     furi_assert(ctx);
     Data* data = ctx;
 
-    canvas_set_custom_u8g2_font(canvas, u8g_font_5x8);
-    //canvas_set_font(canvas, FontSecondary);
+    canvas_set_custom_u8g2_font(canvas, u8g_font_5x8); // lib/u8g2/u8g2_fonts.c
      
     char buffer[64];
     int32_t x = 0, y = FONT_HEIGHT;
@@ -72,34 +71,21 @@ int32_t kiisu_light_adc_main(void* p) {
 
     // Data
     Data data = {};
-    for(size_t i = 0; i < gpio_pins_count; i++) {
-        if(gpio_pins[i].channel != FuriHalAdcChannelNone) {
-            data.count++;
-        }
-    }
     data.count += 4; // Special channels
     data.items = malloc(data.count * sizeof(DataItem));
     size_t item_pos = 0;
-    for(size_t i = 0; i < gpio_pins_count; i++) {
-        if(gpio_pins[i].channel != FuriHalAdcChannelNone) {
-            furi_hal_gpio_init(gpio_pins[i].pin, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
-            data.items[item_pos].pin = &gpio_pins[i];
-            data.items[item_pos].converter = furi_hal_adc_convert_to_voltage;
-            data.items[item_pos].suffix = "mV";
-            item_pos++;
-        }
-    }
+    furi_hal_gpio_init(&gpio_ext_pc3, GpioModeAnalog, GpioPullDown, GpioSpeedHigh);
     data.items[item_pos].pin = &item_light;
     data.items[item_pos].converter = furi_hal_adc_convert_to_voltage;
-    data.items[item_pos].suffix = "mV";
-    item_pos++;
-    data.items[item_pos].pin = &item_vref;
-    data.items[item_pos].converter = furi_hal_adc_convert_vref;
-    data.items[item_pos].suffix = "mV";
+    data.items[item_pos].suffix = "mV / 1187mV";
     item_pos++;
     data.items[item_pos].pin = &item_temp;
     data.items[item_pos].converter = furi_hal_adc_convert_temp;
     data.items[item_pos].suffix = "C";
+    item_pos++;
+    data.items[item_pos].pin = &item_vref;
+    data.items[item_pos].converter = furi_hal_adc_convert_vref;
+    data.items[item_pos].suffix = "mV";
     item_pos++;
     data.items[item_pos].pin = &item_vbat;
     data.items[item_pos].converter = furi_hal_adc_convert_vbat;
