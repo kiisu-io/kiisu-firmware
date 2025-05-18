@@ -57,6 +57,13 @@ static void app_draw_callback(Canvas* canvas, void* ctx) {
             data->items[i].suffix);
         canvas_draw_str(canvas, x, y, buffer);
         y += FONT_HEIGHT;
+
+        if(i == 0) { //Light level
+            char line[32];            
+            snprintf(line, sizeof(line), "%4.0f%%", 100 - ((double)data->items[i].value / 1187 * 100));
+            canvas_draw_str(canvas, x, y, line);
+            y += FONT_HEIGHT;
+        }
     }
 }
 
