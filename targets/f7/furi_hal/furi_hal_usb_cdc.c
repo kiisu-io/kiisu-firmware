@@ -43,7 +43,7 @@ struct CdcConfigDescriptorDual {
     struct CdcIadDescriptor iad_1;
 } FURI_PACKED;
 
-static const struct usb_string_descriptor dev_manuf_desc = USB_STRING_DESC("Flipper Devices Inc.");
+static const struct usb_string_descriptor dev_manuf_desc = USB_STRING_DESC("RainWalker");
 
 /* Device descriptor */
 static const struct usb_device_descriptor cdc_device_desc = {
@@ -448,7 +448,7 @@ static void cdc_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
     struct usb_string_descriptor* dev_serial_desc = malloc((len + 5) * 2 + 2);
     dev_serial_desc->bLength = (len + 5) * 2 + 2;
     dev_serial_desc->bDescriptorType = USB_DTYPE_STRING;
-    memcpy(dev_serial_desc->wString, "f\0l\0i\0p\0_\0", 5 * 2);
+    memcpy(dev_serial_desc->wString, "k\0i\0i\0s\0_\0", 5 * 2);
     for(uint8_t i = 0; i < len; i++) {
         dev_serial_desc->wString[i + 5] = name[i];
     }
