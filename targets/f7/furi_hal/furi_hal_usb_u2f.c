@@ -47,7 +47,7 @@ static const uint8_t hid_u2f_report_desc[] = {
     HID_END_COLLECTION,
 };
 
-static const struct usb_string_descriptor dev_manuf_desc = USB_STRING_DESC("Flipper Devices Inc.");
+static const struct usb_string_descriptor dev_manuf_desc = USB_STRING_DESC("RainWalker");
 static const struct usb_string_descriptor dev_prod_desc = USB_STRING_DESC("U2F Token");
 
 /* Device descriptor */
