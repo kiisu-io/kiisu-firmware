@@ -28,7 +28,7 @@ struct BleServiceDevInfo {
     BleGattCharacteristicInstance characteristics[DevInfoSvcGattCharacteristicCount];
 };
 
-static const char dev_info_man_name[] = "Flipper Devices Inc.";
+static const char dev_info_man_name[] = "RainWalker";
 static const char dev_info_serial_num[] = "1.0";
 static const char dev_info_rpc_version[] = TOSTRING(PROTOBUF_MAJOR_VERSION.PROTOBUF_MINOR_VERSION);
 static char hardware_revision[DEVICE_INFO_HARDWARE_REV_SIZE] = {0};
