@@ -1,16 +1,16 @@
-# Kiisu Zero serial port
+# Kiisu/Flipper serial port
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="5740", TAG+="uaccess", GROUP="dialout"
 
-# Kiisu Zero DFU
+# Kiisu/Flipper DFU
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="df11", ATTRS{manufacturer}=="STMicroelectronics", TAG+="uaccess", GROUP="dialout"
 
-# Kiisu ESP32s2 BlackMagic
+# Kiisu/Flipper ESP32s2 BlackMagic
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="40??", TAG+="uaccess", GROUP="dialout"
 
-# Kiisu ESP32s2 in DAP mode
+# Kiisu/Flipper ESP32s2 in DAP mode
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="40??", ATTRS{manufacturer}=="CMSIS-DAP", TAG+="uaccess", GROUP="dialout"
 
-# Kiisu U2F
+# Kiisu/Flipper U2F
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="5741", ENV{ID_SECURITY_TOKEN}="1"
 
 # ST-Link-V3
