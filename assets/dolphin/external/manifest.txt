@@ -6,4 +6,18 @@ Min butthurt: 0
 Max butthurt: 14
 Min level: 1
 Max level: 3
+Weight: 4
+
+Name: LA_KiisuHappy_128x64
+Min butthurt: 0
+Max butthurt: 5
+Min level: 1
+Max level: 3
+Weight: 5
+
+Name: LA_KiisuSad_128x64
+Min butthurt: 5
+Max butthurt: 14
+Min level: 1
+Max level: 3
 Weight: 5
