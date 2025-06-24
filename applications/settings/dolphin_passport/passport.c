@@ -11,10 +11,16 @@
 #define BUTTHURT_MAX 3
 
 static const Icon* const portrait_happy[BUTTHURT_MAX] = {
+    &I_passport_happy1_46x49,
+    &I_passport_happy1_46x49,
     &I_passport_happy1_46x49};
 static const Icon* const portrait_ok[BUTTHURT_MAX] = {
+    &I_passport_okay1_46x49,
+    &I_passport_okay1_46x49,
     &I_passport_okay1_46x49};
 static const Icon* const portrait_bad[BUTTHURT_MAX] = {
+    &I_passport_bad1_46x49,
+    &I_passport_bad1_46x49,
     &I_passport_bad1_46x49};
 
 static const Icon* const* portraits[MOODS_TOTAL] = {portrait_happy, portrait_ok, portrait_bad};
