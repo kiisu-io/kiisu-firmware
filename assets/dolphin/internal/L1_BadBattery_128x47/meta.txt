@@ -11,4 +11,13 @@ Frame rate: 1
 Duration: 0
 Active cooldown: 0
 
-Bubble slots: 0
+Bubble slots: 1
+
+Slot: 0
+X: 4
+Y: 21
+Text: I feel so sick!\nI'm dying...
+AlignH: Right
+AlignV: Center
+StartFrame: 0
+EndFrame: 0

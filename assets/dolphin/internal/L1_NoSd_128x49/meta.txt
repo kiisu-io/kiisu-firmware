@@ -11,4 +11,13 @@ Frame rate: 1
 Duration: 0
 Active cooldown: 0
 
-Bubble slots: 0
+Bubble slots: 1
+
+Slot: 0
+X: 40
+Y: 18
+Text: Need an\nSD card
+AlignH: Right
+AlignV: Bottom
+StartFrame: 0
+EndFrame: 0
