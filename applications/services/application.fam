@@ -11,6 +11,5 @@ App(
         "desktop",
         "loader",
         "power",
-        "namechanger_srv",
     ],
 )
