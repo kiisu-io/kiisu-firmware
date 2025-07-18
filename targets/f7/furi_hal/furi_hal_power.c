@@ -71,7 +71,7 @@ void furi_hal_power_init(void) {
 
     furi_hal_i2c_acquire(&furi_hal_i2c_handle_power);
     // Find and init gauge
-    size_t retry = 0;
+    size_t retry = 2;
     while(retry > 0) {
         furi_hal_power.gauge_ok =
             bq27220_init(&furi_hal_i2c_handle_power, furi_hal_power_gauge_data_memory);
@@ -85,7 +85,7 @@ void furi_hal_power_init(void) {
         retry--;
     }
     // Find and init charger
-    retry = 0;
+    retry = 2;
     while(retry > 0) {
         furi_hal_power.charger_ok = bq25896_init(&furi_hal_i2c_handle_power);
         if(furi_hal_power.charger_ok) {

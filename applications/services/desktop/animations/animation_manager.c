@@ -366,14 +366,13 @@ static bool animation_manager_is_valid_idle_animation(
 
     bool result = true;
 
-    /*if(!strcmp(info->name, BAD_BATTERY_ANIMATION_NAME)) {
+    if(!strcmp(info->name, BAD_BATTERY_ANIMATION_NAME)) {
         Power* power = furi_record_open(RECORD_POWER);
         bool battery_is_well = power_is_battery_healthy(power);
         furi_record_close(RECORD_POWER);
 
         result = !battery_is_well;
-    }*/
-    
+    }
     if(!strcmp(info->name, NO_SD_ANIMATION_NAME)) {
         Storage* storage = furi_record_open(RECORD_STORAGE);
         FS_Error sd_status = storage_sd_status(storage);
