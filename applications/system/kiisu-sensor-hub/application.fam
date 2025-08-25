@@ -1,0 +1,12 @@
+App(
+    appid="kiisu_sensor_hub",
+    name="Kiisu Sensor Hub",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="kiisu_sensor_hub_app",
+    fap_icon="kitty.png",
+    stack_size=6 * 1024,
+    fap_category="Kiisu",
+    fap_author="2elw",
+    fap_version="1.0.0",
+    fap_description="Explore Kiisu's sensors",
+)

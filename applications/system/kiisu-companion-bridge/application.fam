@@ -1,0 +1,13 @@
+App(
+	appid="kiisu_companion_bridge",
+	name="Kiisu Companion Bridge",
+	apptype=FlipperAppType.EXTERNAL,
+	entry_point="kiisu_companion_bridge_app",
+	requires=["gui"],
+    fap_icon="ST.png",
+    fap_author="2elw",
+    fap_version="1.0.0",
+	stack_size=6 * 1024,
+	order=175,
+	fap_category="Kiisu",
+)
