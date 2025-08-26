@@ -127,7 +127,7 @@ static void sleep_changed(VariableItem* it) {
     app->sleep_delay_ms = delay_value[idx];
     variable_item_set_current_value_text(it, delay_text[idx]);
     // Apply to system notification settings immediately
-    if(app->notification) {
+   /* if(app->notification) {
         app->notification->settings.display_off_delay_ms = app->sleep_delay_ms;
         // Wake display so the new timer restarts from now
         notification_message(app->notification, &sequence_display_backlight_on);
@@ -140,7 +140,7 @@ static void sleep_changed(VariableItem* it) {
             sizeof(app->notification->settings),
             NOTIFICATION_SETTINGS_MAGIC,
             NOTIFICATION_SETTINGS_VERSION);
-    }
+    }*/
 }
 
 static void popup_done(void* ctx) {
