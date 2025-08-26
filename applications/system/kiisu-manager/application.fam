@@ -1,0 +1,19 @@
+App(
+    appid="kiisu_manager",
+    name="Kiisu Manager",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="kiisu_manager_app",
+    sources=[
+        "kiisu_manager.c",
+        "settings_client.c",
+        "ui.c",
+    ],
+    requires=[
+        "gui",
+    ],
+    stack_size=2 * 1024,
+    fap_category="Kiisu",
+    fap_author="2elw",
+    fap_icon="kittypaw.png",
+    fap_version="1.0.0",
+)
