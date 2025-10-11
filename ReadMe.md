@@ -32,3 +32,15 @@ Build firmware .tgz bundle (for qFlipper):
 ./fbt COMPACT=1 DEBUG=0 updater_package
 ```
 
+## Other Resources
+- [Kiisu.io website](https://kiisu.io)
+- [Buy Kiisu here](https://store.rainwalker.ee/products/kiisu-v4)
+- [Documentation, schematics and binaries for Kiisu V4](https://github.com/kiisu-io/kiisu4)
+- [Our Discord Community](https://discord.gg/kiisu) can help with your questions
+  
+- [Aux MCU firmware to support Flipper Zero firmwares](https://github.com/kiisu-io/kiisu4-companion-fw)
+- [Twoelw's GitHub](https://github.com/twoelw) with useful apps and firmware for Kiisu.
+
+- [Cases and stuff for 3D printing on Printables](https://www.printables.com/@planmarks/collections/2364779)
+- [Cases and stuff for 3D printing on Makerworld](https://makerworld.com/ru/collections/6517412-kiisu-devboard)
+
