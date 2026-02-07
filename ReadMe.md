@@ -2,7 +2,7 @@
 
 Fork of [Flipper Zero official firmware](https://github.com/flipperdevices/flipperzero-firmware) with small fixes for [Kiisu board](https://kiisu.io).
 
-## Inclided Apps from https://github.com/twoelw
+## Included Apps from https://github.com/twoelw
 * Kiisu Companion Bridge for Aux MCU flash (https://github.com/twoelw/kiisu-companion-bridge)
 * Kiisu Sensor Hub (https://github.com/twoelw/kiisu-sensor-hub)
 * Kiisu Manager (https://github.com/twoelw/kiisu-manager)
