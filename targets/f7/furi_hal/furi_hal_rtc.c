@@ -134,10 +134,11 @@ static void furi_hal_rtc_recover(void) {
 
     // Start Clock
     if(!furi_hal_rtc_start_clock_and_switch()) {
-        // Plan C: reset RTC and restart
-        furi_hal_light_sequence("rgb R.r.R.r.R.r");
-        furi_hal_rtc_reset();
-        NVIC_SystemReset();
+        // Plan C: use LSI as RTC clock source (no reset — avoid boot loop)
+        FURI_LOG_E("RTC", "LSE failed, falling back to LSI for RTC");
+        LL_RCC_LSE_Disable();
+        LL_RCC_SetRTCClockSource(LL_RCC_RTC_CLKSOURCE_LSI);
+        LL_RCC_EnableRTC();
     }
 
     // Set date if it valid

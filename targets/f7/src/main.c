@@ -6,6 +6,8 @@
 
 #define TAG "Main"
 
+void dbg_beep(int n);
+
 int32_t init_task(void* context) {
     UNUSED(context);
 
@@ -15,12 +17,42 @@ int32_t init_task(void* context) {
     // Init flipper
     flipper_init();
 
+    dbg_beep(2); /* 2 = full init complete */
+
     furi_background();
 
     return 0;
 }
 
+/* Debug beep on PB8 — N short beeps, clock-speed-aware */
+void dbg_beep(int n) {
+    volatile uint32_t* rcc = (volatile uint32_t*)(0x58000000UL + 0x4CUL);
+    *rcc |= (1UL << 1); /* GPIOB clock */
+    for(volatile int d = 0; d < 100; d++) {}
+    volatile uint32_t* moder = (volatile uint32_t*)0x48000400UL;
+    volatile uint32_t* bsrr = (volatile uint32_t*)0x48000418UL;
+    *moder = (*moder & ~(3UL << 16)) | (1UL << 16);
+    /* Scale delays based on CPU clock (4MHz=1, 64MHz=16) */
+    uint32_t scale = SystemCoreClock / 4000000UL;
+    if(scale == 0) scale = 1;
+    uint32_t half = 500 * scale;
+    uint32_t pause = 150000 * scale;
+    uint32_t gap = 400000 * scale;
+    for(int j = 0; j < n; j++) {
+        for(int i = 0; i < 80; i++) {
+            *bsrr = (1UL << 8);
+            for(volatile uint32_t d = 0; d < half; d++) {}
+            *bsrr = (1UL << 24);
+            for(volatile uint32_t d = 0; d < half; d++) {}
+        }
+        for(volatile uint32_t d = 0; d < pause; d++) {} /* pause */
+    }
+    for(volatile uint32_t d = 0; d < gap; d++) {} /* gap after group */
+}
+
 int main(void) {
+    dbg_beep(1); /* 1 = boot started */
+
     // Initialize FURI layer
     furi_init();
 

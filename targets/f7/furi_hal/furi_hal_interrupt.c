@@ -271,8 +271,8 @@ void TAMP_STAMP_LSECSS_IRQHandler(void) {
     if(LL_RCC_IsActiveFlag_LSECSS()) {
         LL_RCC_ClearFlag_LSECSS();
         if(!LL_RCC_LSE_IsReady()) {
-            FURI_LOG_E(TAG, "LSE CSS fired: resetting system");
-            NVIC_SystemReset();
+            FURI_LOG_E(TAG, "LSE CSS fired: LSE not ready (continuing without reset)");
+            /* Don't reset — LSE may be intentionally absent */
         } else {
             FURI_LOG_E(TAG, "LSE CSS fired: but LSE is alive");
         }
