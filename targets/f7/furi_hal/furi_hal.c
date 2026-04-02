@@ -55,9 +55,9 @@ void furi_hal_init(void) {
 #ifndef FURI_RAM_EXEC
     furi_hal_usb_init();
     furi_hal_vibro_init();
-    // furi_hal_subghz_init(); /* DISABLED — hangs without LSE */
-    // furi_hal_nfc_init();    /* DISABLED — hangs without LSE */
-    // furi_hal_rfid_init();   /* DISABLED — hangs without LSE */
+    // furi_hal_subghz_init(); /* DISABLED — CC1101 not responding on SPI */
+    // furi_hal_nfc_init();    /* DISABLED — ST25R3916 same SPI bus, also hangs */
+    furi_hal_rfid_init();
 #endif
 }
 
