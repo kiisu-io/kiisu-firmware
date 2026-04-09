@@ -1,5 +1,6 @@
 #include "cli_main_commands.h"
 #include "cli_command_gpio.h"
+#include "cli_command_selftest.h"
 #include <toolbox/cli/cli_ansi.h>
 
 #include <core/thread.h>
@@ -544,6 +545,8 @@ void cli_main_commands_init(CliRegistry* registry) {
     cli_registry_add_command(registry, "led", CliCommandFlagDefault, cli_command_led, NULL);
     cli_registry_add_command(registry, "gpio", CliCommandFlagDefault, cli_command_gpio, NULL);
     cli_registry_add_command(registry, "i2c", CliCommandFlagDefault, cli_command_i2c, NULL);
+    cli_registry_add_command(
+        registry, "selftest", CliCommandFlagDefault, cli_command_selftest, NULL);
 }
 
 void cli_on_system_start(void) {

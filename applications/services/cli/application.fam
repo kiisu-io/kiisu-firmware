@@ -5,6 +5,7 @@ App(
     cdefines=["SRV_CLI"],
     sources=[
         "cli_command_gpio.c",
+        "cli_command_selftest.c",
         "cli_main_commands.c",
         "cli_main_shell.c",
     ],
