@@ -4,6 +4,7 @@ App(
 	apptype=FlipperAppType.EXTERNAL,
 	entry_point="kiisu_companion_bridge_app",
 	requires=["gui"],
+    fap_file_assets="resources",
     fap_icon="ST.png",
     fap_author="2elw",
     fap_version="1.0.0",
