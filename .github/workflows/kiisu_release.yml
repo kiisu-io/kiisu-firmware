@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+      - '*K'
+      - '*K[A-Z]*'
   workflow_dispatch:
     inputs:
       tag_name:
