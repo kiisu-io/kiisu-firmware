@@ -4,6 +4,17 @@
 *.gdb_history
 *.old
 
+# Enclave keys for scripts/enclave_verify_gen.py — never commit
+scripts/enclave_keys.txt
+enclave_keys.txt
+
+# Plaintext keystore artifacts during keystore migration — never commit
+.keystore_migration/
+
+# Claude Code workflow artifacts (local agent settings/skills/notes)
+.claude/
+CLAUDE.md
+
 
 # LSP
 .cache
