@@ -295,6 +295,13 @@ static void update_compass(App* app) {
     if(!app->lsm_sample.ok) {
         return;
     }
+    /* On boards without a magnetometer (LIS2DH12) the driver reports NaN for
+     * mx/my/mz. Skip the entire compass pipeline so NaN doesn't poison the
+     * IIR filter state, heading vector, and downstream physics simulation. */
+    if(isnan(app->lsm_sample.mx) || isnan(app->lsm_sample.my) ||
+       isnan(app->lsm_sample.mz)) {
+        return;
+    }
 
     // Read raw sensor frame vectors
     float ax = app->lsm_sample.ax;
@@ -1465,11 +1472,20 @@ static void input_cb(InputEvent* e, void* ctx) {
 
 // Apply mapping: given raw (x,y,z) -> mapped (xo,yo,zo)
 static void am_apply(const App* app, float x, float y, float z, float* xo, float* yo, float* zo){
-    UNUSED(app);
-    // Fixed +Z rotation mapping: X' = +Y, Y' = -X, Z' = +Z
-    *xo = y;
-    *yo = -x;
-    *zo = z;
+    /* Map sensor axes to screen frame (X = right, Y = down, Z = out of screen).
+     * The two boards have the IMU mounted in different orientations:
+     *  - LSM303AGR (old): chip rotated 90° in XY → X'=+Y, Y'=-X, Z'=+Z
+     *  - LIS2DH12  (new): Y and Z axes inverted relative to screen → X'=+X, Y'=-Y, Z'=+Z
+     * Detected at runtime via lsm303 driver's has_mag flag. */
+    if(app->lsm.has_mag) {
+        *xo = y;
+        *yo = -x;
+        *zo = z;
+    } else {
+        *xo = x;
+        *yo = -y;
+        *zo = z;
+    }
 }
 
 // App initialization

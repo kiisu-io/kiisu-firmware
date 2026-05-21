@@ -6,9 +6,9 @@
 #define LSM303_ADDR_ACC (0x19 << 1)
 #define LSM303_ADDR_MAG (0x1E << 1)
 
-// LSM303AGR register map (see datasheet)
-// Accelerometer: WHO_AM_I_A = 0x0F (0x33)
-// Magnetometer: WHO_AM_I_M = 0x4F (0x40)
+// Register map shared between LSM303AGR (accel + mag) and LIS2DH12 (accel only):
+// Accelerometer: WHO_AM_I_A = 0x0F → 0x33 (same chip ID)
+// Magnetometer (LSM303AGR only): WHO_AM_I_M = 0x4F → 0x40
 
 static bool lsm303_read_id(Lsm303* dev) {
     if(dev->mock) return true;
@@ -17,14 +17,25 @@ static bool lsm303_read_id(Lsm303* dev) {
         FURI_LOG_W("LSM303", "ACC WHOAMI read fail");
         return false;
     }
-    (void)i2c_read_reg(dev->bus, LSM303_ADDR_MAG, 0x4F, &who_m, 1);
-    FURI_LOG_I("LSM303", "WHO_A=0x%02X (exp 0x33), WHO_M=0x%02X (exp 0x40)", who_a, who_m);
+    /* Detect magnetometer presence by probing WHO_AM_I_M. LIS2DH12 has no
+     * magnetometer and this read will fail with no ACK on the bus. */
+    dev->has_mag = i2c_read_reg(dev->bus, LSM303_ADDR_MAG, 0x4F, &who_m, 1) && who_m == 0x40;
+    FURI_LOG_I(
+        "LSM303",
+        "WHO_A=0x%02X (exp 0x33), WHO_M=0x%02X (%s)",
+        who_a,
+        who_m,
+        dev->has_mag ? "LSM303AGR" : "absent → LIS2DH12");
     return true;
 }
 
-// Minimal init: enable accelerometer & magnetometer (AGR) in continuous mode
+// Minimal init: enable accelerometer (and magnetometer, if present)
 static bool lsm303_hw_init(Lsm303* dev) {
     if(dev->mock) return true;
+
+    /* Probe IDs first so we know whether the magnetometer is present. */
+    (void)lsm303_read_id(dev);
+
     // Accelerometer: CTRL_REG1_A (0x20) -> ODR=100Hz (0101), LPen=0, Zen/Yen/Xen=1
     uint8_t ctrl1_a = 0x57; // 0101 0111
     if(!i2c_write_reg(dev->bus, LSM303_ADDR_ACC, 0x20, &ctrl1_a, 1)) {
@@ -45,36 +56,36 @@ static bool lsm303_hw_init(Lsm303* dev) {
         return false;
     }
 
-    // Magnetometer (AGR): configure via CFG_REG_A/B/C_M
-    // CFG_REG_A_M (0x60): [b7 COMP_TEMP_EN]=1, [b4 LP]=0 (high-res), [b3:b2 ODR]=11 (100Hz), [b1:b0 MD]=00 (continuous)
-    // Set to 100 Hz HR continuous for responsive heading
-    uint8_t cfg_a_m = 0x8C; // 1000 1100 -> COMP_TEMP_EN=1, LP=0 (HR), ODR=100Hz, MD=00
-    if(!i2c_write_reg(dev->bus, LSM303_ADDR_MAG, 0x60, &cfg_a_m, 1)) {
-        FURI_LOG_W("LSM303", "MAG CFG_A init fail");
-        return false;
+    if(dev->has_mag) {
+        // Magnetometer (AGR): configure via CFG_REG_A/B/C_M
+        // CFG_REG_A_M (0x60): [b7 COMP_TEMP_EN]=1, [b4 LP]=0 (high-res), [b3:b2 ODR]=11 (100Hz), [b1:b0 MD]=00 (continuous)
+        uint8_t cfg_a_m = 0x8C; // 1000 1100 -> COMP_TEMP_EN=1, LP=0 (HR), ODR=100Hz, MD=00
+        if(!i2c_write_reg(dev->bus, LSM303_ADDR_MAG, 0x60, &cfg_a_m, 1)) {
+            FURI_LOG_W("LSM303", "MAG CFG_A init fail");
+            return false;
+        }
+        // CFG_REG_B_M (0x61): OFF_CANC=1, LPF=0
+        uint8_t cfg_b_m = 0x02;
+        if(!i2c_write_reg(dev->bus, LSM303_ADDR_MAG, 0x61, &cfg_b_m, 1)) {
+            FURI_LOG_W("LSM303", "MAG CFG_B init fail");
+            return false;
+        }
+        // CFG_REG_C_M (0x62): BDU=1
+        uint8_t cfg_c_m = 0x10;
+        if(!i2c_write_reg(dev->bus, LSM303_ADDR_MAG, 0x62, &cfg_c_m, 1)) {
+            FURI_LOG_W("LSM303", "MAG CFG_C init fail");
+            return false;
+        }
+        furi_delay_ms(2);
     }
-    // CFG_REG_B_M (0x61): enable offset cancellation (continuous); disable internal LPF for snappier response
-    // Bit layout (7:5 reserved, 4: OFF_CANC_ONE_SHOT, 3: INT_on_DataOFF, 2: Set_FREQ, 1: OFF_CANC, 0: LPF)
-    uint8_t cfg_b_m = 0x02; // OFF_CANC=1, LPF=0
-    if(!i2c_write_reg(dev->bus, LSM303_ADDR_MAG, 0x61, &cfg_b_m, 1)) {
-        FURI_LOG_W("LSM303", "MAG CFG_B init fail");
-        return false;
-    }
-    // CFG_REG_C_M (0x62): BDU=1
-    uint8_t cfg_c_m = 0x10; // BDU=1
-    if(!i2c_write_reg(dev->bus, LSM303_ADDR_MAG, 0x62, &cfg_c_m, 1)) {
-        FURI_LOG_W("LSM303", "MAG CFG_C init fail");
-        return false;
-    }
-    furi_delay_ms(2);
 
-    (void)lsm303_read_id(dev);
     return true;
 }
 
 void lsm303_init(Lsm303* dev, I2cBus* bus, bool mock) {
     dev->bus = bus;
     dev->mock = mock || bus->mock;
+    dev->has_mag = false; /* set by lsm303_read_id() during hw_init */
     dev->error_count = 0;
     dev->inited = lsm303_hw_init(dev);
 }
@@ -132,9 +143,13 @@ bool lsm303_poll(Lsm303* dev, Lsm303Sample* out) {
         dev->inited = lsm303_hw_init(dev);
         if(!dev->inited) { dev->error_count++; return false; }
     }
-    int16_t ax, ay, az, mx, my, mz;
+    int16_t ax, ay, az, mx = 0, my = 0, mz = 0;
     if(!read_acc(dev, &ax, &ay, &az)) { dev->error_count++; return false; }
-    if(!read_mag(dev, &mx, &my, &mz)) { dev->error_count++; return false; }
+    bool mag_ok = false;
+    if(dev->has_mag) {
+        mag_ok = read_mag(dev, &mx, &my, &mz);
+        if(!mag_ok) dev->error_count++;
+    }
     // Temperature (best-effort)
     float t_c = NAN;
     (void)read_temp_degC(dev, &t_c);
@@ -142,11 +157,18 @@ bool lsm303_poll(Lsm303* dev, Lsm303Sample* out) {
     out->ax = (float)ax / 1000.0f;
     out->ay = (float)ay / 1000.0f;
     out->az = (float)az / 1000.0f;
-    // LSM303AGR magnetometer sensitivity is typically 1.5 mGauss/LSB => 0.15 uT/LSB
-    const float uT_per_lsb = 0.15f;
-    out->mx = mx * uT_per_lsb;
-    out->my = my * uT_per_lsb;
-    out->mz = mz * uT_per_lsb;
+    // LSM303AGR magnetometer sensitivity is typically 1.5 mGauss/LSB => 0.15 uT/LSB.
+    // On LIS2DH12 (no magnetometer) report NaN so consumers can distinguish.
+    if(mag_ok) {
+        const float uT_per_lsb = 0.15f;
+        out->mx = mx * uT_per_lsb;
+        out->my = my * uT_per_lsb;
+        out->mz = mz * uT_per_lsb;
+    } else {
+        out->mx = NAN;
+        out->my = NAN;
+        out->mz = NAN;
+    }
     out->temp_c = t_c;
     out->ok = true;
     return true;
@@ -155,6 +177,7 @@ bool lsm303_poll(Lsm303* dev, Lsm303Sample* out) {
 bool lsm303_set_hardiron_offsets_uT(Lsm303* dev, float off_x_uT, float off_y_uT, float off_z_uT) {
     if(!dev || !dev->inited) return false;
     if(dev->mock) return true;
+    if(!dev->has_mag) return false; /* nothing to configure on LIS2DH12 */
     // Convert uT to LSB: 1 LSB = 0.15 uT
     int16_t ox = (int16_t)roundf(off_x_uT / 0.15f);
     int16_t oy = (int16_t)roundf(off_y_uT / 0.15f);

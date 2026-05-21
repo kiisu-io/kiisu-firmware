@@ -16,6 +16,7 @@ typedef struct {
     I2cBus* bus;
     bool inited;
     bool mock;
+    bool has_mag; /* false on boards populated with LIS2DH12 (accel-only) */
     uint32_t error_count;
 } Lsm303;
 
