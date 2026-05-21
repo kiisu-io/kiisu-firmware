@@ -547,6 +547,10 @@ void cli_main_commands_init(CliRegistry* registry) {
     cli_registry_add_command(registry, "i2c", CliCommandFlagDefault, cli_command_i2c, NULL);
     cli_registry_add_command(
         registry, "selftest", CliCommandFlagDefault, cli_command_selftest, NULL);
+    cli_registry_add_command(
+        registry, "selftest_buttons", CliCommandFlagDefault, cli_command_selftest_buttons, NULL);
+    cli_registry_add_command(
+        registry, "selftest_nfc_card", CliCommandFlagDefault, cli_command_selftest_nfc_card, NULL);
 }
 
 void cli_on_system_start(void) {

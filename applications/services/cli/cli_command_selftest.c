@@ -5,6 +5,8 @@
 #include <furi_hal_nfc.h>
 #include <furi_hal_infrared.h>
 #include <toolbox/cli/cli_command.h>
+#include <toolbox/args.h>
+#include <input/input.h>
 #include <cc1101.h>
 #include <lib/subghz/devices/cc1101_configs.h>
 
@@ -277,4 +279,149 @@ void cli_command_selftest(PipeSide* pipe, FuriString* args, void* context) {
         selftest_passed,
         selftest_total,
         (selftest_passed == selftest_total) ? "" : " (FAILURES DETECTED)");
+}
+
+/* ===================== PC-driven helpers ===================== */
+
+/* Read optional positive-integer argument with default and ceiling. */
+static uint32_t selftest_parse_timeout_s(FuriString* args, uint32_t default_s, uint32_t max_s) {
+    if(!args || furi_string_size(args) == 0) return default_s;
+    int parsed = 0;
+    if(!args_read_int_and_trim(args, &parsed)) return default_s;
+    if(parsed <= 0) return default_s;
+    if((uint32_t)parsed > max_s) return max_s;
+    return (uint32_t)parsed;
+}
+
+/* ---------- selftest_buttons ---------- */
+
+static void selftest_buttons_input_cb(const void* value, void* ctx) {
+    FuriMessageQueue* queue = ctx;
+    furi_message_queue_put(queue, value, 0);
+}
+
+void cli_command_selftest_buttons(PipeSide* pipe, FuriString* args, void* context) {
+    UNUSED(context);
+    uint32_t timeout_s = selftest_parse_timeout_s(args, 30, 300);
+
+    const InputKey keys[] =
+        {InputKeyUp, InputKeyDown, InputKeyLeft, InputKeyRight, InputKeyOk, InputKeyBack};
+    const char* names[] = {"Up", "Down", "Left", "Right", "Ok", "Back"};
+    const size_t n_keys = COUNT_OF(keys);
+    bool pressed[6] = {false};
+
+    FuriMessageQueue* queue = furi_message_queue_alloc(8, sizeof(InputEvent));
+    FuriPubSub* input_pubsub = furi_record_open(RECORD_INPUT_EVENTS);
+    FuriPubSubSubscription* sub =
+        furi_pubsub_subscribe(input_pubsub, selftest_buttons_input_cb, queue);
+
+    printf("Press each button: Up, Down, Left, Right, Ok, Back (%lus)\r\n", timeout_s);
+
+    uint32_t deadline = furi_get_tick() + timeout_s * 1000;
+    bool all_done = false;
+
+    while(furi_get_tick() < deadline) {
+        if(cli_is_pipe_broken_or_is_etx_next_char(pipe)) break;
+
+        InputEvent event;
+        if(furi_message_queue_get(queue, &event, 100) != FuriStatusOk) continue;
+        if(event.type != InputTypeShort) continue;
+
+        for(size_t i = 0; i < n_keys; i++) {
+            if(event.key == keys[i] && !pressed[i]) {
+                pressed[i] = true;
+                printf("OK: %s\r\n", names[i]);
+                break;
+            }
+        }
+
+        all_done = true;
+        for(size_t i = 0; i < n_keys; i++) {
+            if(!pressed[i]) {
+                all_done = false;
+                break;
+            }
+        }
+        if(all_done) break;
+    }
+
+    furi_pubsub_unsubscribe(input_pubsub, sub);
+    furi_record_close(RECORD_INPUT_EVENTS);
+    furi_message_queue_free(queue);
+
+    if(all_done) {
+        printf("Buttons: 6/6 OK\r\n");
+    } else {
+        printf("Buttons: FAIL — missing");
+        for(size_t i = 0; i < n_keys; i++) {
+            if(!pressed[i]) printf(" %s", names[i]);
+        }
+        printf("\r\n");
+    }
+}
+
+/* ---------- selftest_nfc_card ---------- */
+
+void cli_command_selftest_nfc_card(PipeSide* pipe, FuriString* args, void* context) {
+    UNUSED(pipe);
+    UNUSED(context);
+
+    uint32_t timeout_s = selftest_parse_timeout_s(args, 5, 60);
+
+    FuriHalNfcError err = furi_hal_nfc_acquire();
+    if(err != FuriHalNfcErrorNone) {
+        printf("NFC: acquire failed\r\n");
+        return;
+    }
+
+    furi_hal_nfc_low_power_mode_stop();
+    furi_hal_nfc_set_mode(FuriHalNfcModePoller, FuriHalNfcTechIso14443a);
+    furi_hal_nfc_poller_field_on();
+
+    printf("NFC field ON. Apply card within %lus\r\n", timeout_s);
+
+    bool detected = false;
+    uint8_t atqa[2] = {0};
+    uint32_t deadline = furi_get_tick() + timeout_s * 1000;
+
+    while(furi_get_tick() < deadline) {
+        if(cli_is_pipe_broken_or_is_etx_next_char(pipe)) break;
+
+        furi_hal_nfc_trx_reset();
+        if(furi_hal_nfc_iso14443a_poller_trx_short_frame(FuriHalNfcaShortFrameSensReq) !=
+           FuriHalNfcErrorNone) {
+            furi_delay_ms(50);
+            continue;
+        }
+        /* Walk through the full TX → RX state machine. wait_event returns the
+         * first event(s) that fire; accumulate until either RX_END (success)
+         * or RX_TIMEOUT (no card in field) shows up. */
+        FuriHalNfcEvent acc = 0;
+        uint32_t wait_deadline = furi_get_tick() + 50;
+        while(furi_get_tick() < wait_deadline) {
+            FuriHalNfcEvent ev = furi_hal_nfc_poller_wait_event(10);
+            acc |= ev;
+            if(acc & (FuriHalNfcEventRxEnd | FuriHalNfcEventTimeout)) break;
+        }
+        if(acc & FuriHalNfcEventRxEnd) {
+            size_t rx_bits = 0;
+            if(furi_hal_nfc_poller_rx(atqa, sizeof(atqa), &rx_bits) ==
+                   FuriHalNfcErrorNone &&
+               rx_bits >= 16) {
+                detected = true;
+                break;
+            }
+        }
+        furi_delay_ms(50);
+    }
+
+    /* low_power_mode_start switches the antenna off as part of entering LP. */
+    furi_hal_nfc_low_power_mode_start();
+    furi_hal_nfc_release();
+
+    if(detected) {
+        printf("NFC: OK ATQA=%02X%02X\r\n", atqa[1], atqa[0]);
+    } else {
+        printf("NFC: FAIL no card\r\n");
+    }
 }
