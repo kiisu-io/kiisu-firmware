@@ -1,0 +1,56 @@
+name: Release on tag
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag to create for this release (e.g. v1.4.4-test)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Resolve version suffix
+        id: ver
+        run: |
+          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            echo "suffix=${{ github.event.inputs.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "suffix=${GITHUB_REF##*/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build release package
+        run: ./fbt COMPACT=1 DEBUG=0 DIST_SUFFIX=${{ steps.ver.outputs.suffix }} updater_package
+
+      - name: List artifacts
+        run: ls -la dist/f7-C/
+
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/f7-C/flipper-z-f7-update-${{ steps.ver.outputs.suffix }}.tgz
+            dist/f7-C/flipper-z-f7-full-${{ steps.ver.outputs.suffix }}.dfu
+            dist/f7-C/flipper-z-f7-full-${{ steps.ver.outputs.suffix }}.bin
+            dist/f7-C/flipper-z-f7-firmware-${{ steps.ver.outputs.suffix }}.elf
