@@ -89,7 +89,7 @@ enum {
 // allow generous time to avoid false timeouts on slower chips.
 #define COMMIT_TIMEOUT_MS 5000
 // Finalization takes longer (can verify, relocate, and restart the aux MCU)
-// The overlay already warns that this can take up to 1–2 minutes.
+// The overlay already warns that this can take 3-4 minutes.
 #define FINALIZE_TIMEOUT_MS 120000
 
 typedef struct {
@@ -767,26 +767,17 @@ static void confirm_timer_cb(void* ctx) {
 }
 
 static void draw_warning_layers(Canvas* canvas) {
-	// Layer 1
 	canvas_set_font(canvas, FontPrimary);
-	canvas_draw_str(canvas, 38, 8, "WARNING");
+	canvas_draw_str(canvas, 38, 9, "Warning");
 
-	// Layer 2 copy
 	canvas_set_font(canvas, FontSecondary);
-	canvas_draw_str(canvas, 7, 26, "YOUR OLD AUX FIRMWARE");
+	canvas_draw_str(canvas, 4, 20, "This will overwrite the");
+	canvas_draw_str(canvas, 4, 29, "companion MCU firmware.");
 
-	// Layer 2
-	canvas_draw_str(canvas, 15, 17, "THIS WILL OVERWRITE");
+	canvas_draw_line(canvas, 0, 32, 127, 32);
 
-	// Layer 4 copy
-	canvas_set_font(canvas, FontPrimary);
-	canvas_draw_str(canvas, 5, 51, "IF KIISU GETS BRICKED");
-
-	// Layer 4
-	canvas_draw_str(canvas, 13, 40, "NOT OUR PROBLEM");
-
-	// Layer 6
-	canvas_draw_line(canvas, 0, 28, 127, 28);
+	canvas_draw_str(canvas, 4, 42, "A failed flash may leave");
+	canvas_draw_str(canvas, 4, 51, "the device unbootable.");
 }
 
 static void confirm_draw(Canvas* canvas, void* ctx) {
@@ -853,37 +844,23 @@ static void confirm_exit(void* ctx) {
 
 static void overlay_draw(Canvas* canvas, void* ctx) {
 	UNUSED(ctx);
-	// Ensure background is cleared
 	canvas_clear(canvas);
 
-	// Layer 1
 	canvas_set_font(canvas, FontPrimary);
-	canvas_draw_str(canvas, 23, 9, "!!! FLASHING !!!");
+	canvas_draw_str(canvas, 32, 9, "Flashing...");
 
-	// Layer 5 copy
 	canvas_set_font(canvas, FontSecondary);
-	canvas_draw_str(canvas, 7, 28, "Unplug and replug if you see");
+	canvas_draw_str(canvas, 4, 18, "Updating companion MCU.");
 
-	// Layer 5 copy
-	canvas_draw_str(canvas, 10, 48, "Disconnect and reconnect");
+	canvas_draw_line(canvas, 0, 22, 127, 22);
 
-	// Layer 5 copy
-	canvas_draw_str(canvas, 27, 56, "battery if you only");
+	canvas_draw_str(canvas, 4, 32, "Takes 3-4 minutes. Wait");
+	canvas_draw_str(canvas, 4, 41, "for the success beep");
+	canvas_draw_str(canvas, 4, 50, "before disconnecting.");
 
-	// Layer 5 copy
-	canvas_draw_str(canvas, 26, 37, "green LED flashing");
+	canvas_draw_line(canvas, 0, 53, 127, 53);
 
-	// Layer 5
-	canvas_draw_str(canvas, 15, 17, "This might take 2-3min");
-
-	// Layer 5 copy
-	canvas_draw_str(canvas, 25, 64, "hear success sound");
-
-	// Layer 8
-	canvas_draw_line(canvas, 0, 19, 127, 19);
-
-	// Layer 9
-	canvas_draw_line(canvas, 0, 39, 127, 39);
+	canvas_draw_str(canvas, 4, 62, "If stalled: replug USB.");
 }
 
 static void overlay_enter(void* ctx) {
@@ -905,7 +882,11 @@ static void overlay_timer_cb(void* ctx) {
 		bool ok = updater_is_ready(&furi_hal_i2c_handle_power);
 		furi_hal_i2c_release(&furi_hal_i2c_handle_power);
 		if(!ok) {
-			show_error(app, "COMMUNICATION ERROR", "Are you on a compatible", "AUX firmware?");
+			show_error(
+				app,
+				"No response",
+				"from companion",
+				"Check AUX FW");
 			return;
 		}
 
@@ -969,7 +950,11 @@ static bool home_input(InputEvent* event, void* ctx) {
 			storage_file_close(f);
 			storage_file_free(f);
 			if(sz == 0 || sz > 0xC000ULL) {
-				show_error(app, "FIRMWARE TOO LARGE", "Flash via usb", "or ST-LINK");
+				show_error(
+					app,
+					"File too large",
+					"Max 48 KB.",
+					"Use SWD or DFU.");
 			} else {
 				view_dispatcher_switch_to_view(app->vd, 1);
 			}
