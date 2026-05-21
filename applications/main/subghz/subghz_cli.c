@@ -24,6 +24,7 @@
 
 #include <notification/notification_messages.h>
 #include <flipper_format/flipper_format_i.h>
+#include <toolbox/stream/stream.h>
 
 #define SUBGHZ_FREQUENCY_RANGE_STR \
     "299999755...348000000 or 386999938...464000000 or 778999847...928000000"
@@ -839,6 +840,8 @@ static void subghz_cli_command_print_usage(void) {
             "\tencrypt_keeloq <path_decrypted_file> <path_encrypted_file> <IV:16 bytes in hex>\t - Encrypt keeloq manufacture keys\r\n");
         printf(
             "\tencrypt_raw <path_decrypted_file> <path_encrypted_file> <IV:16 bytes in hex>\t - Encrypt RAW data\r\n");
+        printf(
+            "\tdecrypt_keystore <path_encrypted_file> <path_plain_file>\t - Decrypt keystore with this device's slot 1 and write plaintext (for cross-device key migration)\r\n");
     }
 }
 
@@ -881,6 +884,292 @@ static void subghz_cli_command_encrypt_keeloq(PipeSide* pipe, FuriString* args) 
     } while(false);
 
     subghz_keystore_free(keystore);
+    furi_string_free(destination);
+    furi_string_free(source);
+}
+
+/* Byte-wise add of two 32-bit words (matches ARM `uadd8`). */
+static uint32_t subghz_cli_uadd8(uint32_t a, uint32_t b) {
+    uint32_t result = 0;
+    for(int shift = 0; shift < 32; shift += 8) {
+        uint32_t s = ((a >> shift) & 0xFFu) + ((b >> shift) & 0xFFu);
+        result |= (s & 0xFFu) << shift;
+    }
+    return result;
+}
+
+/* C port of the inline ARM ASM `subghz_keystore_mess_with_iv` in
+ * lib/subghz/subghz_keystore.c (which is static and not exposed). */
+static void subghz_cli_mess_with_iv(uint8_t* iv) {
+    uint32_t* w = (uint32_t*)iv;
+    uint32_t w0 = w[0], w1 = w[1], w2 = w[2], w3 = w[3];
+
+    /* First pair: r0=w0, r2=w1 */
+    uint32_t r1 = (w0 << 8) & 0xFFFFFFFFu;
+    uint32_t r3 = ((w1 << 8) & 0xFFFFFFFFu) | (w0 >> 24);
+    r1 = subghz_cli_uadd8(r1, w0);
+    r3 = subghz_cli_uadd8(r3, w1);
+    w[0] = r1;
+    w[1] = r3;
+
+    /* Second pair: r1=w2, r3=w3; ASM still uses *original* w1 here for high
+     * byte injection, not the just-rewritten w[1]. */
+    uint32_t r0_ = ((w2 << 8) & 0xFFFFFFFFu) | (w1 >> 24);
+    uint32_t r2_ = ((w3 << 8) & 0xFFFFFFFFu) | (w2 >> 24);
+    r1 = subghz_cli_uadd8(w2, r0_);
+    r3 = subghz_cli_uadd8(w3, r2_);
+    w[2] = r1;
+    w[3] = r3;
+}
+
+static int subghz_cli_hex_nibble(char c) {
+    if(c >= '0' && c <= '9') return c - '0';
+    if(c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if(c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+static bool subghz_cli_decrypt_keystore_raw(const char* src_path, const char* dst_path) {
+    bool ok = false;
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+
+    FlipperFormat* in_ff = flipper_format_file_alloc(storage);
+    FlipperFormat* out_ff = flipper_format_file_alloc(storage);
+    FuriString* filetype = furi_string_alloc();
+    FuriString* tmp = furi_string_alloc();
+    uint8_t iv[16];
+    bool key_loaded = false;
+
+    do {
+        if(!flipper_format_file_open_existing(in_ff, src_path)) {
+            printf("Cannot open %s\r\n", src_path);
+            break;
+        }
+        uint32_t version = 0;
+        if(!flipper_format_read_header(in_ff, filetype, &version)) {
+            printf("Bad header\r\n");
+            break;
+        }
+        if(strcmp(furi_string_get_cstr(filetype), "Flipper SubGhz Keystore RAW File") != 0) {
+            printf("Not a RAW keystore: %s\r\n", furi_string_get_cstr(filetype));
+            break;
+        }
+        uint32_t encryption = 0;
+        if(!flipper_format_read_uint32(in_ff, "Encryption", &encryption, 1)) {
+            printf("Missing Encryption tag\r\n");
+            break;
+        }
+        if(encryption != 1) {
+            printf("Already plaintext (Encryption=%lu)\r\n", encryption);
+            break;
+        }
+        if(!flipper_format_read_hex(in_ff, "IV", iv, 16)) {
+            printf("Missing IV\r\n");
+            break;
+        }
+        subghz_cli_mess_with_iv(iv);
+        if(!flipper_format_read_string(in_ff, "Encrypt_data", tmp)) {
+            printf("Missing Encrypt_data\r\n");
+            break;
+        }
+
+        if(!furi_hal_crypto_enclave_load_key(1, iv)) {
+            printf("Slot 1 load failed\r\n");
+            break;
+        }
+        key_loaded = true;
+
+        if(!flipper_format_file_open_always(out_ff, dst_path)) {
+            printf("Cannot open %s for write\r\n", dst_path);
+            break;
+        }
+        if(!flipper_format_write_header_cstr(out_ff, "Flipper SubGhz Keystore RAW File", 0)) {
+            printf("Cannot write header\r\n");
+            break;
+        }
+        uint32_t zero = 0;
+        if(!flipper_format_write_uint32(out_ff, "Encryption", &zero, 1)) {
+            printf("Cannot write Encryption\r\n");
+            break;
+        }
+
+        Stream* in_stream = flipper_format_get_raw_stream(in_ff);
+        Stream* out_stream = flipper_format_get_raw_stream(out_ff);
+
+        /* Skip the trailing '\n' after the last header field. */
+        uint8_t skip;
+        stream_read(in_stream, &skip, 1);
+
+        char hex_buf[32];
+        uint8_t cipher[16];
+        uint8_t plain[16];
+        const char hex_chars[] = "0123456789ABCDEF";
+        bool decrypt_ok = true;
+        size_t blocks = 0;
+
+        while(true) {
+            size_t got = stream_read(in_stream, (uint8_t*)hex_buf, 32);
+            if(got == 0) break;
+            if(got != 32) {
+                printf("Truncated hex stream (got %zu bytes)\r\n", got);
+                decrypt_ok = false;
+                break;
+            }
+            for(size_t i = 0; i < 16; i++) {
+                int hi = subghz_cli_hex_nibble(hex_buf[i * 2]);
+                int lo = subghz_cli_hex_nibble(hex_buf[i * 2 + 1]);
+                if(hi < 0 || lo < 0) {
+                    printf("Invalid hex at block %zu\r\n", blocks);
+                    decrypt_ok = false;
+                    break;
+                }
+                cipher[i] = (uint8_t)((hi << 4) | lo);
+            }
+            if(!decrypt_ok) break;
+            if(!furi_hal_crypto_decrypt(cipher, plain, 16)) {
+                printf("Decryption failed at block %zu\r\n", blocks);
+                decrypt_ok = false;
+                break;
+            }
+            char out_hex[32];
+            for(size_t i = 0; i < 16; i++) {
+                out_hex[i * 2] = hex_chars[(plain[i] >> 4) & 0xF];
+                out_hex[i * 2 + 1] = hex_chars[plain[i] & 0xF];
+            }
+            if(stream_write(out_stream, (const uint8_t*)out_hex, 32) != 32) {
+                printf("Write failed at block %zu\r\n", blocks);
+                decrypt_ok = false;
+                break;
+            }
+            blocks++;
+        }
+        if(!decrypt_ok) break;
+
+        printf("Decrypted %zu blocks (%zu bytes) to %s\r\n", blocks, blocks * 16, dst_path);
+        ok = true;
+    } while(false);
+
+    if(key_loaded) furi_hal_crypto_enclave_unload_key(1);
+    flipper_format_free(in_ff);
+    flipper_format_free(out_ff);
+    furi_string_free(filetype);
+    furi_string_free(tmp);
+    furi_record_close(RECORD_STORAGE);
+    return ok;
+}
+
+static bool subghz_cli_write_plain_keystore(SubGhzKeystore* keystore, const char* file_path) {
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    FlipperFormat* flipper_format = flipper_format_file_alloc(storage);
+    bool ok = false;
+    char line[256];
+
+    do {
+        if(!flipper_format_file_open_always(flipper_format, file_path)) {
+            printf("Cannot open %s for write\r\n", file_path);
+            break;
+        }
+        if(!flipper_format_write_header_cstr(
+               flipper_format, "Flipper SubGhz Keystore File", 0)) {
+            printf("Failed to write header\r\n");
+            break;
+        }
+        uint32_t encryption = 0;
+        if(!flipper_format_write_uint32(flipper_format, "Encryption", &encryption, 1)) {
+            printf("Failed to write Encryption tag\r\n");
+            break;
+        }
+
+        Stream* stream = flipper_format_get_raw_stream(flipper_format);
+        SubGhzKeyArray_t* data = subghz_keystore_get_data(keystore);
+        size_t total = SubGhzKeyArray_size(*data);
+        size_t written = 0;
+        for
+            M_EACH(key, *data, SubGhzKeyArray_t) {
+                int len = snprintf(
+                    line,
+                    sizeof(line),
+                    "%08lX%08lX:%hu:%s\n",
+                    (uint32_t)(key->key >> 32),
+                    (uint32_t)key->key,
+                    key->type,
+                    furi_string_get_cstr(key->name));
+                if(len <= 0 || (size_t)len >= sizeof(line)) {
+                    printf("Line too long for key %s\r\n", furi_string_get_cstr(key->name));
+                    break;
+                }
+                if(stream_write(stream, (const uint8_t*)line, len) != (size_t)len) {
+                    printf("Write failed\r\n");
+                    break;
+                }
+                written++;
+            }
+        ok = (written == total);
+        if(ok) {
+            printf("Wrote %zu keys to %s\r\n", written, file_path);
+        } else {
+            printf("Only %zu of %zu keys written\r\n", written, total);
+        }
+    } while(false);
+
+    flipper_format_free(flipper_format);
+    furi_record_close(RECORD_STORAGE);
+    return ok;
+}
+
+static bool subghz_cli_peek_filetype(const char* path, FuriString* filetype_out) {
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    FlipperFormat* ff = flipper_format_file_alloc(storage);
+    bool ok = false;
+    uint32_t version = 0;
+
+    if(flipper_format_file_open_existing(ff, path)) {
+        ok = flipper_format_read_header(ff, filetype_out, &version);
+    }
+
+    flipper_format_free(ff);
+    furi_record_close(RECORD_STORAGE);
+    return ok;
+}
+
+static void subghz_cli_command_decrypt_keystore(PipeSide* pipe, FuriString* args) {
+    UNUSED(pipe);
+
+    FuriString* source = furi_string_alloc();
+    FuriString* destination = furi_string_alloc();
+    FuriString* filetype = furi_string_alloc();
+
+    do {
+        if(!args_read_string_and_trim(args, source)) {
+            subghz_cli_command_print_usage();
+            break;
+        }
+        if(!args_read_string_and_trim(args, destination)) {
+            subghz_cli_command_print_usage();
+            break;
+        }
+
+        if(!subghz_cli_peek_filetype(furi_string_get_cstr(source), filetype)) {
+            printf("Cannot read header of %s\r\n", furi_string_get_cstr(source));
+            break;
+        }
+
+        if(strcmp(furi_string_get_cstr(filetype), "Flipper SubGhz Keystore RAW File") == 0) {
+            subghz_cli_decrypt_keystore_raw(
+                furi_string_get_cstr(source), furi_string_get_cstr(destination));
+            break;
+        }
+
+        SubGhzKeystore* keystore = subghz_keystore_alloc();
+        if(!subghz_keystore_load(keystore, furi_string_get_cstr(source))) {
+            printf("Failed to load Keystore\r\n");
+        } else {
+            subghz_cli_write_plain_keystore(keystore, furi_string_get_cstr(destination));
+        }
+        subghz_keystore_free(keystore);
+    } while(false);
+
+    furi_string_free(filetype);
     furi_string_free(destination);
     furi_string_free(source);
 }
@@ -1165,6 +1454,11 @@ static void execute(PipeSide* pipe, FuriString* args, void* context) {
 
             if(furi_string_cmp_str(cmd, "encrypt_raw") == 0) {
                 subghz_cli_command_encrypt_raw(pipe, args);
+                break;
+            }
+
+            if(furi_string_cmp_str(cmd, "decrypt_keystore") == 0) {
+                subghz_cli_command_decrypt_keystore(pipe, args);
                 break;
             }
 
