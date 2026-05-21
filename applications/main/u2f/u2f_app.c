@@ -51,6 +51,9 @@ U2fApp* u2f_app_alloc(void) {
         app->error = U2fAppErrorCloseRpc;
         scene_manager_next_scene(app->scene_manager, U2fSceneError);
     } else {
+        /* Generate a self-signed attestation certificate the first time the
+         * app is launched on a device without one. */
+        u2f_data_cert_generate_if_missing();
         if(u2f_data_check(true)) {
             scene_manager_next_scene(app->scene_manager, U2fSceneMain);
         } else {

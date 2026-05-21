@@ -120,6 +120,10 @@ void u2f_free(U2fData* U2F) {
 bool u2f_init(U2fData* U2F) {
     furi_assert(U2F);
 
+    if(u2f_data_cert_generate_if_missing() == false) {
+        FURI_LOG_E(TAG, "Certificate auto-generation failed");
+        return false;
+    }
     if(u2f_data_cert_check() == false) {
         FURI_LOG_E(TAG, "Certificate load error");
         return false;

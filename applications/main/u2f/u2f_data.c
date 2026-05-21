@@ -1,5 +1,6 @@
 #include <furi.h>
 #include "u2f_data.h"
+#include "u2f_cert_gen.h"
 #include <furi_hal.h>
 #include <storage/storage.h>
 #include <furi_hal_random.h>
@@ -8,8 +9,9 @@
 #define TAG "U2f"
 
 #define U2F_DATA_FOLDER   EXT_PATH("u2f/")
-#define U2F_CERT_FILE     U2F_DATA_FOLDER "assets/cert.der"
-#define U2F_CERT_KEY_FILE U2F_DATA_FOLDER "assets/cert_key.u2f"
+#define U2F_ASSETS_FOLDER U2F_DATA_FOLDER "assets"
+#define U2F_CERT_FILE     U2F_ASSETS_FOLDER "/cert.der"
+#define U2F_CERT_KEY_FILE U2F_ASSETS_FOLDER "/cert_key.u2f"
 #define U2F_KEY_FILE      U2F_DATA_FOLDER "key.u2f"
 #define U2F_CNT_FILE      U2F_DATA_FOLDER "cnt.u2f"
 
@@ -64,6 +66,95 @@ bool u2f_data_check(bool cert_only) {
 
     furi_record_close(RECORD_STORAGE);
 
+    return state;
+}
+
+bool u2f_data_cert_generate_if_missing(void) {
+    Storage* fs_api = furi_record_open(RECORD_STORAGE);
+
+    bool need_cert = !storage_file_exists(fs_api, U2F_CERT_FILE);
+    bool need_key = !storage_file_exists(fs_api, U2F_CERT_KEY_FILE);
+
+    if(!need_cert && !need_key) {
+        furi_record_close(RECORD_STORAGE);
+        return true;
+    }
+
+    FURI_LOG_I(TAG, "Generating self-signed U2F attestation certificate");
+
+    bool state = false;
+    uint8_t* cert_der = NULL;
+    uint8_t priv_key[U2F_CERT_GEN_PRIV_KEY_SIZE];
+
+    do {
+        /* storage_simply_mkdir does not accept trailing slashes. */
+        if(!storage_simply_mkdir(fs_api, EXT_PATH("u2f"))) {
+            FURI_LOG_E(TAG, "Failed to create %s", EXT_PATH("u2f"));
+            break;
+        }
+        if(!storage_simply_mkdir(fs_api, U2F_ASSETS_FOLDER)) {
+            FURI_LOG_E(TAG, "Failed to create %s", U2F_ASSETS_FOLDER);
+            break;
+        }
+
+        cert_der = malloc(U2F_CERT_GEN_MAX_DER_SIZE);
+        if(cert_der == NULL) break;
+
+        size_t cert_len = 0;
+        if(!u2f_cert_gen_self_signed(cert_der, U2F_CERT_GEN_MAX_DER_SIZE, &cert_len, priv_key)) {
+            FURI_LOG_E(TAG, "Certificate generation failed");
+            break;
+        }
+
+        /* Write the certificate DER. */
+        {
+            File* file = storage_file_alloc(fs_api);
+            bool write_ok = false;
+            if(storage_file_open(file, U2F_CERT_FILE, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
+                write_ok = storage_file_write(file, cert_der, cert_len) == cert_len;
+            }
+            storage_file_close(file);
+            storage_file_free(file);
+            if(!write_ok) {
+                FURI_LOG_E(TAG, "Failed to write %s", U2F_CERT_FILE);
+                break;
+            }
+        }
+
+        /* Write the matching private key as USER_UNENCRYPTED so that the
+         * existing u2f_data_cert_key_load() encrypts it with the device-unique
+         * enclave key on first read. */
+        {
+            FlipperFormat* flipper_format = flipper_format_file_alloc(fs_api);
+            bool write_ok = false;
+            uint32_t cert_type = U2F_CERT_USER_UNENCRYPTED;
+            if(flipper_format_file_open_always(flipper_format, U2F_CERT_KEY_FILE)) {
+                write_ok =
+                    flipper_format_write_header_cstr(
+                        flipper_format, U2F_CERT_KEY_FILE_TYPE, U2F_CERT_KEY_VERSION) &&
+                    flipper_format_write_uint32(flipper_format, "Type", &cert_type, 1) &&
+                    flipper_format_write_hex(
+                        flipper_format, "Data", priv_key, U2F_CERT_GEN_PRIV_KEY_SIZE);
+            }
+            flipper_format_free(flipper_format);
+            if(!write_ok) {
+                FURI_LOG_E(TAG, "Failed to write %s", U2F_CERT_KEY_FILE);
+                /* Remove the cert too so we retry next time. */
+                storage_simply_remove(fs_api, U2F_CERT_FILE);
+                break;
+            }
+        }
+
+        state = true;
+    } while(0);
+
+    if(cert_der != NULL) {
+        memset(cert_der, 0, U2F_CERT_GEN_MAX_DER_SIZE);
+        free(cert_der);
+    }
+    memset(priv_key, 0, sizeof(priv_key));
+
+    furi_record_close(RECORD_STORAGE);
     return state;
 }
 
@@ -179,7 +270,10 @@ bool u2f_data_cert_key_load(uint8_t* cert_key) {
     uint32_t version = 0;
 
     // Check if unique key exists in secure eclave and generate it if missing
-    if(!furi_hal_crypto_enclave_ensure_key(U2F_DATA_FILE_ENCRYPTION_KEY_SLOT_UNIQUE)) return false;
+    if(!furi_hal_crypto_enclave_ensure_key(U2F_DATA_FILE_ENCRYPTION_KEY_SLOT_UNIQUE)) {
+        FURI_LOG_E(TAG, "Enclave ensure_key(11) failed");
+        return false;
+    }
 
     FuriString* filetype;
     filetype = furi_string_alloc();
