@@ -9,7 +9,7 @@ Fork of [Flipper Zero official firmware](https://github.com/flipperdevices/flipp
 
 ## Flash via Flipper Lab
 1. Install SD Card into Kiisu and format it, connect your Kiisu board via USB
-2. Use this link: [https://lab.flipper.net/?url=https://oksa.ee/kiisu11.tgz&target=f7&channel=release-cfw&version=kiisu-11](https://lab.flipper.net/?url=https://oksa.ee/kiisu-z-f7-update-1.4.3-2K.tgz&target=f7&channel=release-cfw&version=kiisu-1.4.3-2K)
+2. Use this link: [https://lab.flipper.net/?url=https://oksa.ee/kiisu-z-f7-update-1.4.3-2K.tgz&target=f7&channel=release-cfw&version=kiisu-1.4.3-2K](https://lab.flipper.net/?url=https://oksa.ee/kiisu-z-f7-update-1.4.3-2K.tgz&target=f7&channel=release-cfw&version=kiisu-1.4.3-2K)
 3. Press Connect (if not connected automatically)
 4. Press Install
 
