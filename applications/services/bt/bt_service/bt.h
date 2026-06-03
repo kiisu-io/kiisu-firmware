@@ -5,6 +5,8 @@
 #include <furi_ble/profile_interface.h>
 #include <core/common_defines.h>
 
+#include <services/serial_service.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -19,6 +21,11 @@ typedef enum {
     BtStatusAdvertising,
     BtStatusConnected,
 } BtStatus;
+
+typedef struct {
+    uint8_t rssi;
+    uint32_t since;
+} BtRssi;
 
 typedef void (*BtStatusChangedCallback)(BtStatus status, void* context);
 
@@ -78,6 +85,32 @@ void bt_keys_storage_set_storage_path(Bt* bt, const char* keys_storage_path);
  * @param bt                    Bt instance
  */
 void bt_keys_storage_set_default_path(Bt* bt);
+
+/** Set custom data channel callback (for BLE offload, separate from RPC)
+ *
+ * @param bt        Bt instance
+ * @param callback  Custom data receive callback
+ * @param context   Callback context
+ */
+void bt_set_custom_data_callback(Bt* bt, SerialServiceCustomDataCallback callback, void* context);
+
+/** Send custom data via BLE (fe66 characteristic)
+ *
+ * @param bt        Bt instance
+ * @param data      Data buffer
+ * @param size      Data size
+ *
+ * @return      true on success
+ */
+bool bt_custom_data_tx(Bt* bt, uint8_t* data, uint16_t size);
+
+/** Check if BLE is connected
+ *
+ * @param bt        Bt instance
+ *
+ * @return      true if connected
+ */
+bool bt_is_connected(Bt* bt);
 
 #ifdef __cplusplus
 }

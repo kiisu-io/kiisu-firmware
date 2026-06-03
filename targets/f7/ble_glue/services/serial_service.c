@@ -16,6 +16,8 @@ typedef enum {
     SerialSvcGattCharacteristicTx,
     SerialSvcGattCharacteristicFlowCtrl,
     SerialSvcGattCharacteristicStatus,
+    SerialSvcGattCharacteristicCustomDataRx,
+    SerialSvcGattCharacteristicCustomDataTx,
     SerialSvcGattCharacteristicCount,
 } SerialSvcGattCharacteristicId;
 
@@ -59,7 +61,27 @@ static const BleGattCharacteristicParams ble_svc_serial_chars[SerialSvcGattChara
         .char_properties = CHAR_PROP_READ | CHAR_PROP_WRITE | CHAR_PROP_NOTIFY,
         .security_permissions = ATTR_PERMISSION_AUTHEN_READ | ATTR_PERMISSION_AUTHEN_WRITE,
         .gatt_evt_mask = GATT_NOTIFY_ATTRIBUTE_WRITE,
-        .is_variable = CHAR_VALUE_LEN_CONSTANT}};
+        .is_variable = CHAR_VALUE_LEN_CONSTANT},
+    [SerialSvcGattCharacteristicCustomDataRx] = {
+        .name = "Custom Data RX",
+        .data_prop_type = FlipperGattCharacteristicDataFixed,
+        .data.fixed.length = BLE_SVC_SERIAL_CUSTOM_DATA_LEN_MAX,
+        .uuid.Char_UUID_128 = BLE_SVC_SERIAL_CUSTOM_DATA_RX_UUID,
+        .uuid_type = UUID_TYPE_128,
+        .char_properties = CHAR_PROP_WRITE_WITHOUT_RESP | CHAR_PROP_WRITE | CHAR_PROP_READ,
+        .security_permissions = ATTR_PERMISSION_NONE,
+        .gatt_evt_mask = GATT_NOTIFY_ATTRIBUTE_WRITE,
+        .is_variable = CHAR_VALUE_LEN_VARIABLE},
+    [SerialSvcGattCharacteristicCustomDataTx] = {
+        .name = "Custom Data TX",
+        .data_prop_type = FlipperGattCharacteristicDataFixed,
+        .data.fixed.length = BLE_SVC_SERIAL_CUSTOM_DATA_LEN_MAX,
+        .uuid.Char_UUID_128 = BLE_SVC_SERIAL_CUSTOM_DATA_TX_UUID,
+        .uuid_type = UUID_TYPE_128,
+        .char_properties = CHAR_PROP_READ | CHAR_PROP_NOTIFY,
+        .security_permissions = ATTR_PERMISSION_NONE,
+        .gatt_evt_mask = GATT_DONT_NOTIFY_EVENTS,
+        .is_variable = CHAR_VALUE_LEN_VARIABLE}};
 
 struct BleServiceSerial {
     uint16_t svc_handle;
@@ -69,6 +91,8 @@ struct BleServiceSerial {
     uint16_t bytes_ready_to_receive;
     SerialServiceEventCallback callback;
     void* context;
+    SerialServiceCustomDataCallback custom_data_callback;
+    void* custom_data_context;
     GapSvcEventHandler* event_handler;
 };
 
@@ -126,6 +150,20 @@ static BleEventAckStatus ble_svc_serial_event_handler(void* event, void* context
                         serial_svc->callback(event, serial_svc->context);
                     }
                 }
+            } else if(
+                attribute_modified->Attr_Handle ==
+                serial_svc->chars[SerialSvcGattCharacteristicCustomDataRx].handle + 1) {
+                FURI_LOG_D(
+                    TAG,
+                    "Custom data RX: %d bytes",
+                    attribute_modified->Attr_Data_Length);
+                if(serial_svc->custom_data_callback) {
+                    serial_svc->custom_data_callback(
+                        attribute_modified->Attr_Data,
+                        attribute_modified->Attr_Data_Length,
+                        serial_svc->custom_data_context);
+                }
+                ret = BleEventAckFlowEnable;
             }
         } else if(blecore_evt->ecode == ACI_GATT_SERVER_CONFIRMATION_VSEVT_CODE) {
             FURI_LOG_T(TAG, "Ack received");
@@ -159,7 +197,7 @@ BleServiceSerial* ble_svc_serial_start(void) {
         ble_event_dispatcher_register_svc_handler(ble_svc_serial_event_handler, serial_svc);
 
     if(!ble_gatt_service_add(
-           UUID_TYPE_128, &service_uuid, PRIMARY_SERVICE, 12, &serial_svc->svc_handle)) {
+           UUID_TYPE_128, &service_uuid, PRIMARY_SERVICE, 18, &serial_svc->svc_handle)) {
         free(serial_svc);
         return NULL;
     }
@@ -256,4 +294,42 @@ void ble_svc_serial_set_rpc_active(BleServiceSerial* serial_svc, bool active) {
     furi_check(serial_svc);
     ble_svc_serial_update_rpc_char(
         serial_svc, active ? SerialServiceRpcStatusActive : SerialServiceRpcStatusNotActive);
+}
+
+void ble_svc_serial_set_custom_data_callback(
+    BleServiceSerial* serial_svc,
+    SerialServiceCustomDataCallback callback,
+    void* context) {
+    furi_check(serial_svc);
+    serial_svc->custom_data_callback = callback;
+    serial_svc->custom_data_context = context;
+}
+
+bool ble_svc_serial_custom_data_tx(BleServiceSerial* serial_svc, uint8_t* data, uint16_t data_len) {
+    if(data_len > BLE_SVC_SERIAL_CUSTOM_DATA_LEN_MAX) {
+        return false;
+    }
+
+    for(uint16_t remained = data_len; remained > 0;) {
+        uint8_t value_len = MIN(BLE_SVC_SERIAL_CUSTOM_DATA_LEN_MAX, remained);
+        uint16_t value_offset = data_len - remained;
+        remained -= value_len;
+
+        tBleStatus result = aci_gatt_update_char_value_ext(
+            0,
+            serial_svc->svc_handle,
+            serial_svc->chars[SerialSvcGattCharacteristicCustomDataTx].handle,
+            remained ? 0x00 : 0x01, // 0x01 = notify (not indicate like TX)
+            data_len,
+            value_offset,
+            value_len,
+            data + value_offset);
+
+        if(result) {
+            FURI_LOG_E(TAG, "Failed updating custom data TX: %d", result);
+            return false;
+        }
+    }
+
+    return true;
 }

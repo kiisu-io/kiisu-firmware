@@ -124,3 +124,28 @@ bool ble_profile_serial_tx(FuriHalBleProfileBase* profile, uint8_t* data, uint16
 
     return ble_svc_serial_update_tx(serial_profile->serial_svc, data, size);
 }
+
+void ble_profile_serial_set_custom_data_callback(
+    FuriHalBleProfileBase* profile,
+    SerialServiceCustomDataCallback callback,
+    void* context) {
+    furi_check(profile && (profile->config == ble_profile_serial));
+
+    BleProfileSerial* serial_profile = (BleProfileSerial*)profile;
+    ble_svc_serial_set_custom_data_callback(serial_profile->serial_svc, callback, context);
+}
+
+bool ble_profile_serial_custom_data_tx(
+    FuriHalBleProfileBase* profile,
+    uint8_t* data,
+    uint16_t size) {
+    furi_check(profile && (profile->config == ble_profile_serial));
+
+    BleProfileSerial* serial_profile = (BleProfileSerial*)profile;
+
+    if(size > BLE_PROFILE_SERIAL_PACKET_SIZE_MAX) {
+        return false;
+    }
+
+    return ble_svc_serial_custom_data_tx(serial_profile->serial_svc, data, size);
+}

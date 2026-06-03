@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file furi_hal_bt.h
  * BT/BLE HAL API
  */
@@ -296,6 +296,45 @@ bool furi_hal_bt_extra_beacon_is_active(void);
  */
 const GapExtraBeaconConfig* furi_hal_bt_extra_beacon_get_config(void);
 
+
+
+/** Callback type for BLE advertising reports received during observation.
+ * addr is 6 bytes little-endian (addr[0] = LSB).
+ */
+typedef void (*FuriHalBtAdvReportCallback)(
+    uint8_t num_reports,
+    uint8_t event_type,
+    uint8_t addr_type,
+    const uint8_t* addr,
+    uint8_t data_len,
+    const uint8_t* data,
+    int8_t rssi,
+    void* context);
+
+/** Register a callback to receive GAP advertising reports.
+ * Must be called after furi_hal_bt_start_observer().
+ * @param cb      Callback function (called from BLE event thread)
+ * @param ctx     User context pointer
+ */
+void furi_hal_bt_set_adv_report_callback(FuriHalBtAdvReportCallback cb, void* ctx);
+
+/** Unregister the advertising report callback. */
+void furi_hal_bt_clear_adv_report_callback(void);
+
+/** Start BLE GAP Observation procedure (passive scan).
+ * Requires Full BLE stack. Advertising reports arrive via
+ * hci_le_advertising_report_event() weak callback.
+ *
+ * @param scan_interval  Scan interval in 0.625ms units (0x0060 = 60ms)
+ * @param scan_window    Scan window  in 0.625ms units (0x0030 = 30ms)
+ * @return true on success
+ */
+bool furi_hal_bt_start_observer(uint16_t scan_interval, uint16_t scan_window);
+
+/** Stop BLE GAP Observation procedure.
+ * @return true on success
+ */
+bool furi_hal_bt_stop_observer(void);
 #ifdef __cplusplus
 }
 #endif

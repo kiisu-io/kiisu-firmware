@@ -159,6 +159,7 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
             gap->connection_params.supervisor_timeout = event->Supervision_Timeout;
             FURI_LOG_I(TAG, "Connection parameters event complete");
             gap_verify_connection_parameters(gap);
+
             break;
         }
 
@@ -193,6 +194,7 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
             gap->service.connection_handle = event->Connection_Handle;
 
             gap_verify_connection_parameters(gap);
+
             if(gap->config->pairing_method != GapPairingNone) {
                 // Start pairing by sending security request
                 aci_gap_slave_security_req(event->Connection_Handle);
@@ -354,7 +356,7 @@ static void gap_init_svc(Gap* gap, const GapRootSecurityKeys* root_keys) {
     // Initialize GATT interface
     aci_gatt_init();
     // Initialize GAP interface
-    // Skip fist symbol AD_TYPE_COMPLETE_LOCAL_NAME
+    // Skip first symbol AD_TYPE_COMPLETE_LOCAL_NAME
     char* name = gap->service.adv_name + 1;
     aci_gap_init(
         GAP_PERIPHERAL_ROLE,
@@ -427,6 +429,11 @@ static void gap_advertise_start(GapState new_state) {
 
     FURI_LOG_D(TAG, "Start: %d", new_state);
 
+    if((new_state == GapStateAdvLowPower) && (gap->state == GapStateAdvLowPower)) {
+        furi_timer_stop(gap->advertise_timer);
+        return;
+    }
+
     if(new_state == GapStateAdvFast) {
         min_interval = 0x80; // 80 ms
         max_interval = 0xa0; // 100 ms
@@ -466,12 +473,30 @@ static void gap_advertise_start(GapState new_state) {
         0,
         0);
     if(status) {
-        FURI_LOG_E(TAG, "set_discoverable failed %d", status);
+        FURI_LOG_W(TAG, "set_discoverable failed %d, retrying", status);
+        aci_gap_set_non_discoverable();
+        furi_delay_ms(50);
+        status = aci_gap_set_discoverable(
+            ADV_IND,
+            min_interval,
+            max_interval,
+            CFG_IDENTITY_ADDRESS,
+            0,
+            strlen(gap->service.adv_name),
+            (uint8_t*)gap->service.adv_name,
+            gap->service.adv_svc_uuid_len,
+            gap->service.adv_svc_uuid,
+            0,
+            0);
+        if(status) {
+            FURI_LOG_E(TAG, "set_discoverable retry failed %d", status);
+            gap->state = GapStateIdle;
+            return;
+        }
     }
     gap->state = new_state;
     GapEvent event = {.type = GapEventTypeStartAdvertising};
     gap->on_event_cb(event, gap->context);
-    furi_timer_start(gap->advertise_timer, INITIAL_ADV_TIMEOUT);
 }
 
 static void gap_advertise_stop(void) {
@@ -524,7 +549,7 @@ void gap_stop_advertising(void) {
     furi_check(furi_mutex_release(gap->state_mutex) == FuriStatusOk);
 }
 
-static void gap_advetise_timer_callback(void* context) {
+static void gap_advertise_timer_callback(void* context) {
     UNUSED(context);
     GapCommand command = GapCommandAdvLowPower;
     furi_check(furi_message_queue_put(gap->command_queue, &command, 0) == FuriStatusOk);
@@ -541,10 +566,10 @@ bool gap_init(
 
     furi_check(gap == NULL);
 
-    gap = malloc(sizeof(Gap));
+    gap = calloc(1, sizeof(Gap));
     gap->config = config;
     // Create advertising timer
-    gap->advertise_timer = furi_timer_alloc(gap_advetise_timer_callback, FuriTimerTypeOnce, NULL);
+    gap->advertise_timer = furi_timer_alloc(gap_advertise_timer_callback, FuriTimerTypeOnce, NULL);
     // Initialization of GATT & GAP layer
     gap->service.adv_name = config->adv_name;
     gap_init_svc(gap, root_keys);

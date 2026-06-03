@@ -35,6 +35,7 @@ typedef enum {
     BtMessageTypeGetSettings,
     BtMessageTypeSetSettings,
     BtMessageTypeReloadKeysSettings,
+    BtMessageTypeSetChargeSleep,
 } BtMessageType;
 
 typedef struct {
@@ -54,6 +55,7 @@ typedef union {
     BtKeyStorageUpdateData key_storage_data;
     BtSettings* settings;
     const BtSettings* csettings;
+    bool charge_sleep;
 } BtMessageData;
 
 typedef struct {
@@ -88,4 +90,20 @@ struct Bt {
     FuriEventFlag* api_event;
     BtStatusChangedCallback status_changed_cb;
     void* status_changed_ctx;
+    uint32_t pin;
+    bool suppress_pin_screen;
+    bool insomnia_held;
+    bool charge_sleep;
 };
+
+/** Open a new RPC connection
+ *
+ * @param bt                    Bt instance
+ */
+void bt_open_rpc_connection(Bt* bt);
+
+/** Close the active RPC connection
+ *
+ * @param bt                    Bt instance
+ */
+void bt_close_rpc_connection(Bt* bt);

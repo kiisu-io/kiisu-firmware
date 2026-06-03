@@ -10,7 +10,7 @@
 #include <toolbox/saved_struct.h>
 
 #define BT_KEYS_STORAGE_MAGIC          (0x18)
-#define BT_KEYS_STORAGE_VERSION        (1)
+#define BT_KEYS_STORAGE_VERSION        (2)
 #define BT_KEYS_STORAGE_LEGACY_VERSION (0) // Legacy version with no root keys
 
 #define TAG "BtKeyStorage"
@@ -76,6 +76,7 @@ static bool bt_keys_storage_load_keys_and_pairings(
     }
 
     furi_hal_bt_nvm_sram_sem_acquire();
+    memset(instance->nvm_sram_buff, 0, instance->nvm_sram_buff_size);
     memcpy(instance->nvm_sram_buff, loaded->pairing_data, ble_data_size);
     instance->current_size = ble_data_size;
     furi_hal_bt_nvm_sram_sem_release();
@@ -115,7 +116,7 @@ bool bt_keys_storage_delete(BtKeysStorage* instance) {
 BtKeysStorage* bt_keys_storage_alloc(const char* keys_storage_path) {
     furi_assert(keys_storage_path);
 
-    BtKeysStorage* instance = malloc(sizeof(BtKeysStorage));
+    BtKeysStorage* instance = calloc(1, sizeof(BtKeysStorage));
     // Set default nvm ram parameters
     furi_hal_bt_get_key_storage_buff(&instance->nvm_sram_buff, &instance->nvm_sram_buff_size);
     // Set key storage file
@@ -171,10 +172,10 @@ static bool bt_keys_storage_validate_file(
     } else if(magic != BT_KEYS_STORAGE_MAGIC) {
         FURI_LOG_W(TAG, "File magic mismatch");
         return false;
-    } else if(version > BT_KEYS_STORAGE_VERSION) {
+    } else if(version != BT_KEYS_STORAGE_VERSION && version != BT_KEYS_STORAGE_LEGACY_VERSION) {
         FURI_LOG_E(
             TAG,
-            "File version %d is newer than supported version %d",
+            "File version %d differs from supported version %d",
             version,
             BT_KEYS_STORAGE_VERSION);
         return false;
@@ -220,15 +221,18 @@ bool bt_keys_storage_is_changed(BtKeysStorage* instance) {
 
         if(!data_loaded) {
             FURI_LOG_E(TAG, "Failed to load file");
+            is_changed = true;
             break;
         }
 
         // At this point, it's version 1 file we have
         const BtKeysStorageFile* loaded = (const BtKeysStorageFile*)data_buffer;
-        size_t expected_file_size = sizeof(GapRootSecurityKeys) + instance->current_size;
-        if(payload_size == expected_file_size) {
+        if(payload_size < sizeof(GapRootSecurityKeys)) {
+            is_changed = true;
+        } else if(payload_size == sizeof(GapRootSecurityKeys) + instance->current_size) {
             furi_hal_bt_nvm_sram_sem_acquire();
             is_changed =
+                memcmp(&loaded->root_keys, &instance->root_keys, sizeof(GapRootSecurityKeys)) ||
                 memcmp(loaded->pairing_data, instance->nvm_sram_buff, instance->current_size);
             furi_hal_bt_nvm_sram_sem_release();
         } else {
@@ -274,8 +278,9 @@ bool bt_keys_storage_load(BtKeysStorage* instance) {
     size_t payload_size;
     uint8_t file_version;
     if(!bt_keys_storage_validate_file(file_path, &payload_size, &file_version)) {
-        FURI_LOG_E(TAG, "Invalid or corrupted file");
-        return false;
+        FURI_LOG_W(TAG, "Invalid, missing, or corrupted file, creating fresh key storage");
+        instance->current_size = 0;
+        return bt_keys_storage_save(instance);
     }
 
     bool loaded = false;
@@ -314,13 +319,20 @@ bool bt_keys_storage_update(BtKeysStorage* instance, uint8_t* start_addr, uint32
         size);
 
     do {
+        if(start_addr < instance->nvm_sram_buff ||
+           start_addr > instance->nvm_sram_buff + instance->nvm_sram_buff_size) {
+            FURI_LOG_E(TAG, "NVM RAM update outside buffer");
+            break;
+        }
         size_t new_size = start_addr - instance->nvm_sram_buff + size;
         if(new_size > instance->nvm_sram_buff_size) {
             FURI_LOG_E(TAG, "NVM RAM buffer overflow");
             break;
         }
 
-        instance->current_size = new_size;
+        if(new_size > instance->current_size) {
+            instance->current_size = new_size;
+        }
 
         // Save using version 1 format with embedded root keys
         bool data_updated = bt_keys_storage_save(instance);

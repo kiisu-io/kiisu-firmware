@@ -1,5 +1,4 @@
-#include "bt_i.h"
-#include <profiles/serial_profile.h>
+#include "bt_api.h"
 
 FuriHalBleProfileBase* bt_profile_start(
     Bt* bt,
@@ -106,6 +105,21 @@ void bt_set_settings(Bt* bt, const BtSettings* settings) {
         .lock = api_lock_alloc_locked(),
         .type = BtMessageTypeSetSettings,
         .data.csettings = settings,
+    };
+
+    furi_check(
+        furi_message_queue_put(bt->message_queue, &message, FuriWaitForever) == FuriStatusOk);
+
+    api_lock_wait_unlock_and_free(message.lock);
+}
+
+void bt_set_charge_sleep(Bt* bt, bool enabled) {
+    furi_assert(bt);
+
+    BtMessage message = {
+        .lock = api_lock_alloc_locked(),
+        .type = BtMessageTypeSetChargeSleep,
+        .data.charge_sleep = enabled,
     };
 
     furi_check(

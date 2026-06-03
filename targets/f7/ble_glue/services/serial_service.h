@@ -11,13 +11,15 @@ extern "C" {
  * Serial service. Implements RPC over BLE, with flow control.
  */
 
-#define BLE_SVC_SERIAL_DATA_LEN_MAX       (486)
-#define BLE_SVC_SERIAL_CHAR_VALUE_LEN_MAX (243)
+#define BLE_SVC_SERIAL_DATA_LEN_MAX            (486)
+#define BLE_SVC_SERIAL_CHAR_VALUE_LEN_MAX      (243)
+#define BLE_SVC_SERIAL_CUSTOM_DATA_LEN_MAX     (64)
 
 typedef enum {
     SerialServiceEventTypeDataReceived,
     SerialServiceEventTypeDataSent,
     SerialServiceEventTypesBleResetRequest,
+    SerialServiceEventTypeCustomDataReceived,
 } SerialServiceEventType;
 
 typedef struct {
@@ -49,6 +51,16 @@ void ble_svc_serial_set_rpc_active(BleServiceSerial* service, bool active);
 void ble_svc_serial_notify_buffer_is_empty(BleServiceSerial* service);
 
 bool ble_svc_serial_update_tx(BleServiceSerial* service, uint8_t* data, uint16_t data_len);
+
+/** Custom data channel callback (separate from RPC) */
+typedef void (*SerialServiceCustomDataCallback)(uint8_t* data, uint16_t size, void* context);
+
+void ble_svc_serial_set_custom_data_callback(
+    BleServiceSerial* service,
+    SerialServiceCustomDataCallback callback,
+    void* context);
+
+bool ble_svc_serial_custom_data_tx(BleServiceSerial* service, uint8_t* data, uint16_t data_len);
 
 #ifdef __cplusplus
 }

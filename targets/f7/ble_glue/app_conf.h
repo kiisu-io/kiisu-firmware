@@ -72,7 +72,7 @@
  *  - 2, if extended properties is used
  *  The total amount of memory needed is the sum of the above quantities for each attribute.
  */
-#define CFG_BLE_ATT_VALUE_ARRAY_SIZE (1344)
+#define CFG_BLE_ATT_VALUE_ARRAY_SIZE (1344 + 256)
 
 /**
  * Prepare Write List size in terms of number of packet

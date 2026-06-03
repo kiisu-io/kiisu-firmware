@@ -267,6 +267,34 @@ void furi_hal_bt_stop_advertising(void) {
     }
 }
 
+void furi_hal_bt_refresh_advertising_name(void) {
+    if(!current_profile) {
+        return;
+    }
+
+    GapState state = gap_get_state();
+    if(state == GapStateUninitialized) {
+        return;
+    }
+
+    const bool restart_advertising =
+        (state == GapStateStartingAdv) || (state == GapStateAdvFast) ||
+        (state == GapStateAdvLowPower);
+
+    if(restart_advertising) {
+        furi_hal_bt_stop_advertising();
+    }
+
+    strlcpy(
+        current_config.adv_name,
+        furi_hal_version_get_ble_local_device_name_ptr(),
+        sizeof(current_config.adv_name));
+
+    if(restart_advertising) {
+        furi_hal_bt_start_advertising();
+    }
+}
+
 void furi_hal_bt_update_battery_level(uint8_t battery_level) {
     ble_svc_battery_state_update(&battery_level, NULL);
 }
@@ -300,10 +328,10 @@ bool furi_hal_bt_clear_white_list(void) {
     furi_hal_bt_nvm_sram_sem_acquire();
     tBleStatus status = aci_gap_clear_security_db();
     if(status) {
-        FURI_LOG_E(TAG, "Clear while list failed with status %d", status);
+        FURI_LOG_E(TAG, "Clear white list failed with status %d", status);
     }
     furi_hal_bt_nvm_sram_sem_release();
-    return status != BLE_STATUS_SUCCESS;
+    return status == BLE_STATUS_SUCCESS;
 }
 
 void furi_hal_bt_dump_state(FuriString* buffer) {
@@ -439,4 +467,115 @@ bool furi_hal_bt_extra_beacon_stop(void) {
 
 bool furi_hal_bt_extra_beacon_is_active(void) {
     return gap_extra_beacon_get_state() == GapExtraBeaconStateStarted;
+}
+
+
+/* -----------------------------------------------------------------------
+ * GAP Observation (BLE Scanner) - OmniCore extension
+ * Requires Full BLE stack (FuriHalBtStackFull).
+ * ----------------------------------------------------------------------- */
+
+bool furi_hal_bt_start_observer(uint16_t scan_interval, uint16_t scan_window) {
+    if((furi_hal_bt.stack != FuriHalBtStackFull) && (furi_hal_bt.stack != FuriHalBtStackLight)) {
+        return false;
+    }
+    tBleStatus ret = aci_gap_start_observation_proc(
+        scan_interval,
+        scan_window,
+        0x01, /* Active scan (also fetch scan responses / names) */
+        0x00, /* Public address */
+        0x00, /* Disable duplicate filtering so we get RSSI updates */
+        0x00  /* Basic unfiltered */
+    );
+    return (ret == BLE_STATUS_SUCCESS);
+}
+
+bool furi_hal_bt_stop_observer(void) {
+    if((furi_hal_bt.stack != FuriHalBtStackFull) && (furi_hal_bt.stack != FuriHalBtStackLight)) {
+        return false;
+    }
+    tBleStatus ret = aci_gap_terminate_gap_proc(0x80); /* GAP_OBSERVATION_PROC */
+    return (ret == BLE_STATUS_SUCCESS);
+}
+
+/* -----------------------------------------------------------------------
+ * Advertising Report callback registration
+ * Allows FAP apps to receive GAP advertising reports at runtime.
+ * ----------------------------------------------------------------------- */
+
+typedef void (*FuriHalBtAdvReportCallback)(
+    uint8_t num_reports,
+    uint8_t event_type,
+    uint8_t addr_type,
+    const uint8_t* addr,   /* 6 bytes, little-endian */
+    uint8_t data_len,
+    const uint8_t* data,
+    int8_t rssi,
+    void* context);
+
+static FuriHalBtAdvReportCallback furi_hal_bt_adv_cb   = NULL;
+static void*                      furi_hal_bt_adv_ctx  = NULL;
+
+void furi_hal_bt_set_adv_report_callback(FuriHalBtAdvReportCallback cb, void* ctx) {
+    furi_hal_bt_adv_cb  = cb;
+    furi_hal_bt_adv_ctx = ctx;
+}
+
+void furi_hal_bt_clear_adv_report_callback(void) {
+    furi_hal_bt_adv_cb  = NULL;
+    furi_hal_bt_adv_ctx = NULL;
+}
+
+/* Override the __WEAK stub defined in ble_events.c */
+void hci_le_advertising_report_event(
+    uint8_t Num_Reports,
+    const Advertising_Report_t* Advertising_Report) {
+    if(!furi_hal_bt_adv_cb) return;
+    for(uint8_t i = 0; i < Num_Reports; i++) {
+        furi_hal_bt_adv_cb(
+            1,
+            Advertising_Report[i].Event_Type,
+            Advertising_Report[i].Address_Type,
+            Advertising_Report[i].Address,
+            Advertising_Report[i].Length_Data,
+            Advertising_Report[i].Data,
+            (int8_t)Advertising_Report[i].RSSI,
+            furi_hal_bt_adv_ctx);
+    }
+}
+
+/* Newer stacks may deliver observer data as EXTENDED advertising reports. */
+void hci_le_extended_advertising_report_event(
+    uint8_t Num_Reports,
+    uint16_t Event_Type,
+    uint8_t Address_Type,
+    const uint8_t* Address,
+    uint8_t Primary_PHY,
+    uint8_t Secondary_PHY,
+    uint8_t Advertising_SID,
+    uint8_t TX_Power,
+    uint8_t RSSI,
+    uint16_t Periodic_Adv_Interval,
+    uint8_t Direct_Address_Type,
+    const uint8_t* Direct_Address,
+    uint8_t Data_Length,
+    const uint8_t* Data) {
+    UNUSED(Primary_PHY);
+    UNUSED(Secondary_PHY);
+    UNUSED(Advertising_SID);
+    UNUSED(TX_Power);
+    UNUSED(Periodic_Adv_Interval);
+    UNUSED(Direct_Address_Type);
+    UNUSED(Direct_Address);
+
+    if(!furi_hal_bt_adv_cb) return;
+    furi_hal_bt_adv_cb(
+        Num_Reports,
+        (uint8_t)(Event_Type & 0xFF),
+        Address_Type,
+        Address,
+        Data_Length,
+        Data,
+        (int8_t)RSSI,
+        furi_hal_bt_adv_ctx);
 }

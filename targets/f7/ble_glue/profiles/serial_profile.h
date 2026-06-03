@@ -56,6 +56,30 @@ void ble_profile_serial_set_event_callback(
     FuriHalBtSerialCallback callback,
     void* context);
 
+/** Set custom data channel callback
+ *
+ * @param profile       Profile instance
+ * @param callback      Callback for received custom data
+ * @param context       Callback context
+ */
+void ble_profile_serial_set_custom_data_callback(
+    FuriHalBleProfileBase* profile,
+    SerialServiceCustomDataCallback callback,
+    void* context);
+
+/** Send custom data through BLE (uses fe66 characteristic)
+ *
+ * @param profile       Profile instance
+ * @param data          data buffer
+ * @param size          data buffer size
+ *
+ * @return      true on success
+ */
+bool ble_profile_serial_custom_data_tx(
+    FuriHalBleProfileBase* profile,
+    uint8_t* data,
+    uint16_t size);
+
 #ifdef __cplusplus
 }
 #endif
