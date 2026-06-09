@@ -39,6 +39,9 @@ MfClassicPoller* mf_classic_poller_alloc(Iso14443_3aPoller* iso14443_3a_poller) 
     instance->rx_encrypted_buffer = bit_buffer_alloc(MF_CLASSIC_MAX_BUFF_SIZE);
     instance->current_type_check = MfClassicType4k;
     instance->card_state = MfClassicCardStateLost;
+    // Default to a non-dict-attack mode so mf_classic_poller_free() never frees
+    // union members that were never used if the poller is freed before it starts.
+    instance->mode = MfClassicPollerModeRead;
 
     instance->mfc_event.data = &instance->mfc_event_data;
 
@@ -65,24 +68,31 @@ void mf_classic_poller_free(MfClassicPoller* instance) {
     bit_buffer_free(instance->tx_encrypted_buffer);
     bit_buffer_free(instance->rx_encrypted_buffer);
 
-    // Clean up resources in MfClassicPollerDictAttackContext
-    MfClassicPollerDictAttackContext* dict_attack_ctx = &instance->mode_ctx.dict_attack_ctx;
+    // Clean up resources in MfClassicPollerDictAttackContext, but only when the
+    // poller actually ran a dict attack. mode_ctx is a union: in Read/Write modes
+    // the bytes that overlap nested_nonce.nonces (e.g. write_ctx.tag_block) hold
+    // unrelated data, so freeing them unconditionally dereferences a garbage
+    // pointer and triggers a BusFault (flipperdevices/flipperzero-firmware#4108).
+    if(instance->mode == MfClassicPollerModeDictAttackStandard ||
+       instance->mode == MfClassicPollerModeDictAttackEnhanced) {
+        MfClassicPollerDictAttackContext* dict_attack_ctx = &instance->mode_ctx.dict_attack_ctx;
 
-    // Free the dictionaries
-    if(dict_attack_ctx->mf_classic_system_dict) {
-        keys_dict_free(dict_attack_ctx->mf_classic_system_dict);
-        dict_attack_ctx->mf_classic_system_dict = NULL;
-    }
-    if(dict_attack_ctx->mf_classic_user_dict) {
-        keys_dict_free(dict_attack_ctx->mf_classic_user_dict);
-        dict_attack_ctx->mf_classic_user_dict = NULL;
-    }
+        // Free the dictionaries
+        if(dict_attack_ctx->mf_classic_system_dict) {
+            keys_dict_free(dict_attack_ctx->mf_classic_system_dict);
+            dict_attack_ctx->mf_classic_system_dict = NULL;
+        }
+        if(dict_attack_ctx->mf_classic_user_dict) {
+            keys_dict_free(dict_attack_ctx->mf_classic_user_dict);
+            dict_attack_ctx->mf_classic_user_dict = NULL;
+        }
 
-    // Free the nested nonce array if it exists
-    if(dict_attack_ctx->nested_nonce.nonces) {
-        free(dict_attack_ctx->nested_nonce.nonces);
-        dict_attack_ctx->nested_nonce.nonces = NULL;
-        dict_attack_ctx->nested_nonce.count = 0;
+        // Free the nested nonce array if it exists
+        if(dict_attack_ctx->nested_nonce.nonces) {
+            free(dict_attack_ctx->nested_nonce.nonces);
+            dict_attack_ctx->nested_nonce.nonces = NULL;
+            dict_attack_ctx->nested_nonce.count = 0;
+        }
     }
 
     free(instance);
@@ -162,6 +172,9 @@ NfcCommand mf_classic_poller_handler_start(MfClassicPoller* instance) {
 
     instance->mfc_event.type = MfClassicPollerEventTypeRequestMode;
     command = instance->callback(instance->general_event, instance->context);
+    // Remember the selected mode so mf_classic_poller_free() knows which union
+    // member of mode_ctx is actually live and safe to clean up.
+    instance->mode = instance->mfc_event_data.poller_mode.mode;
 
     if(instance->mfc_event_data.poller_mode.mode == MfClassicPollerModeDictAttackStandard) {
         mf_classic_copy(instance->data, instance->mfc_event_data.poller_mode.data);
