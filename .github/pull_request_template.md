@@ -8,7 +8,7 @@
 
 # Author checklist (Fill this out)
 
-- [ ] I've read the [contribution guidelines](https://github.com/flipperdevices/flipperzero-firmware/blob/dev/CONTRIBUTING.md) and my PR follows them.
+- [ ] I've read the [contribution guidelines](https://github.com/kiisu-io/kiisu-firmware/blob/dev/CONTRIBUTING.md) and my PR follows them.
 - [ ] I own the code I'm submitting or have code owner's permission (or code license allows redistribution) to submit it.
 - [ ] I have performed a self-review of my own code.
 - [ ] I have commented my code, particularly in hard-to-understand areas.
